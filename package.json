@@ -1,0 +1,23 @@
+{
+  "name": "NotSteam",
+  "version": "1.0.0",
+  "description": "Its not steam.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ogyeet10/assignment3-project-per4-bobs-builders-al-dm-lm.git"
+  },
+  "keywords": [],
+  "author": "",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Ogyeet10/assignment3-project-per4-bobs-builders-al-dm-lm/issues"
+  },
+  "homepage": "https://github.com/Ogyeet10/assignment3-project-per4-bobs-builders-al-dm-lm#readme",
+  "dependencies": {
+    "convex": "^1.27.4"
+  }
+}
