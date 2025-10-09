@@ -38,7 +38,7 @@ def match(pattern: List[str], source: List[str]) -> List[str]:
             else:
                 accum = ""
                 pind += 1
-                while pattern[pind] != source[sind]:
+                while pattern[pind].lower() != source[sind].lower():
                     accum += " " + source[sind]
                     sind += 1
 
@@ -61,7 +61,7 @@ def match(pattern: List[str], source: List[str]) -> List[str]:
 
         # 5) check to see if the current thing in the pattern is the same as the current
         # thing in the source
-        elif pattern[pind] == source[sind]:
+        elif pattern[pind].lower() == source[sind].lower():
             # neither has ended and the words match, continue checking
             pind += 1
             sind += 1

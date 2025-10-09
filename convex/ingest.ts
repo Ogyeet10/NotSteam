@@ -1,0 +1,162 @@
+import { mutation } from "./_generated/server";
+import { v } from "convex/values";
+
+function normalizeString(value: string | undefined | null): string | undefined {
+  if (value == null) return undefined;
+  return value.toString().trim().toLowerCase();
+}
+
+function computeDecade(year: number | undefined): number | undefined {
+  if (year === undefined || Number.isNaN(year)) return undefined;
+  return Math.floor(year / 10) * 10;
+}
+
+export const addGame = mutation({
+  args: {
+    display_name: v.string(),
+    normalized_name: v.optional(v.union(v.string(), v.null())),
+    summary: v.string(),
+    release_year: v.optional(v.union(v.float64(), v.null())),
+    developer: v.optional(v.union(v.string(), v.null())),
+    publisher: v.optional(v.union(v.string(), v.null())),
+    franchise: v.optional(v.union(v.string(), v.null())),
+    genre: v.optional(v.union(v.array(v.string()), v.null())),
+    platforms: v.optional(v.union(v.array(v.string()), v.null())),
+    age_rating: v.optional(v.union(v.string(), v.null())),
+    setting: v.optional(v.union(v.string(), v.null())),
+    perspective: v.optional(v.union(v.string(), v.null())),
+    world_type: v.optional(v.union(v.string(), v.null())),
+    multiplayer_type: v.optional(v.union(v.array(v.string()), v.null())),
+    input_methods: v.optional(v.union(v.array(v.string()), v.null())),
+    story_focus: v.optional(v.union(v.string(), v.null())),
+    playtime_hours: v.optional(v.union(v.float64(), v.null())),
+    tags: v.optional(v.union(v.array(v.string()), v.null())),
+    rating: v.optional(v.union(v.float64(), v.null())),
+    price_model: v.optional(v.union(v.string(), v.null())),
+    has_microtransactions: v.optional(v.union(v.boolean(), v.null())),
+    is_vr: v.optional(v.union(v.boolean(), v.null())),
+    has_mods: v.optional(v.union(v.boolean(), v.null())),
+    requires_online: v.optional(v.union(v.boolean(), v.null())),
+    cross_platform: v.optional(v.union(v.boolean(), v.null())),
+    is_remake_or_remaster: v.optional(v.union(v.boolean(), v.null())),
+    is_dlc: v.optional(v.union(v.boolean(), v.null())),
+    // Accept an Id, null, or a string (display name) to resolve.
+    parent_game: v.optional(v.union(v.id("games"), v.null(), v.string())),
+    procedurally_generated: v.optional(v.union(v.boolean(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const releaseYear = args.release_year ?? undefined;
+    const releaseDecade = computeDecade(releaseYear);
+
+    const normalizedName = (args.normalized_name ?? args.display_name)!;
+
+    // Idempotent insert: skip if already present by normalized_name.
+    const existing = await ctx.db
+      .query("games")
+      .withIndex("by_normalized_name", (q) =>
+        q.eq("normalized_name", normalizedName)
+      )
+      .unique();
+
+    if (existing) {
+      return { _id: existing._id, inserted: false };
+    }
+
+    // Resolve parent_game if provided as a string (by normalized_name or display_name)
+    let parentGameId: any = null;
+    if (typeof args.parent_game === "string") {
+      const parentRaw = args.parent_game;
+      const parent = await ctx.db
+        .query("games")
+        .withIndex("by_normalized_name", (q) =>
+          q.eq("normalized_name", parentRaw)
+        )
+        .unique();
+      parentGameId = parent?._id ?? null;
+    } else if (args.parent_game && typeof args.parent_game === "object") {
+      parentGameId = args.parent_game;
+    } else {
+      parentGameId = null;
+    }
+
+    const gameId = await ctx.db.insert("games", {
+      display_name: args.display_name,
+      normalized_name: normalizedName,
+      aliases: undefined,
+      summary: args.summary,
+      franchise: (args.franchise ?? undefined) as any,
+      developer: (args.developer ?? undefined) as any,
+      publisher: (args.publisher ?? undefined) as any,
+      release_year: releaseYear,
+      release_decade: releaseDecade,
+      age_rating: (args.age_rating ?? undefined) as any,
+      setting: (args.setting ?? undefined) as any,
+      perspective: (args.perspective ?? undefined) as any,
+      world_type: (args.world_type ?? undefined) as any,
+      price_model: (args.price_model ?? undefined) as any,
+      story_focus: (args.story_focus ?? undefined) as any,
+      playtime_hours: args.playtime_hours ?? undefined,
+      rating: args.rating ?? undefined,
+      has_microtransactions: args.has_microtransactions ?? undefined,
+      is_vr: args.is_vr ?? undefined,
+      has_mods: args.has_mods ?? undefined,
+      requires_online: args.requires_online ?? undefined,
+      cross_platform: args.cross_platform ?? undefined,
+      is_remake_or_remaster: args.is_remake_or_remaster ?? undefined,
+      is_dlc: args.is_dlc ?? undefined,
+      procedurally_generated: args.procedurally_generated ?? undefined,
+      parent_game: parentGameId,
+      genre: args.genre ?? undefined,
+      platforms: args.platforms ?? undefined,
+      tags: args.tags ?? undefined,
+      multiplayer_type: args.multiplayer_type ?? undefined,
+      input_methods: args.input_methods ?? undefined,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Insert join rows (normalized values)
+    const safeInsertMany = async (
+      table:
+        | "game_platforms"
+        | "game_genres"
+        | "game_tags"
+        | "game_multiplayer"
+        | "game_inputs",
+      values: (string | undefined)[] | undefined,
+      fieldName: "platform" | "genre" | "tag" | "mode" | "input"
+    ) => {
+      if (!values || values.length === 0) return;
+      for (const raw of values) {
+        if (raw === undefined) continue;
+        await ctx.db.insert(table, {
+          gameId,
+          [fieldName]: raw as any,
+          release_year: releaseYear,
+          release_decade: releaseDecade,
+        } as any);
+      }
+    };
+
+    await safeInsertMany(
+      "game_platforms",
+      args.platforms ?? undefined,
+      "platform"
+    );
+    await safeInsertMany("game_genres", args.genre ?? undefined, "genre");
+    await safeInsertMany("game_tags", args.tags ?? undefined, "tag");
+    await safeInsertMany(
+      "game_multiplayer",
+      args.multiplayer_type ?? undefined,
+      "mode"
+    );
+    await safeInsertMany(
+      "game_inputs",
+      args.input_methods ?? undefined,
+      "input"
+    );
+
+    return { _id: gameId, inserted: true };
+  },
+});
