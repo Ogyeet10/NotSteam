@@ -279,65 +279,6 @@ def try_locate_uv_executable() -> Union[Path, None]:
     return candidates[0] if candidates else None
 
 
-def spawn_vscode_restart(target_dir: Path) -> None:
-    """Spawn a detached PowerShell that waits 3s, closes Code.exe, and reopens VS Code at target_dir.
-
-    This helps terminals pick up PATH/env changes. Best effort only; errors are ignored.
-    """
-    if platform.system() != "Windows":
-        return
-    try:
-        repo = str(target_dir.resolve())
-        repo_ps = repo.replace("'", "''")  # single-quote escape for PowerShell literals
-
-        # Determine which PowerShell is available (Windows always has powershell.exe)
-        ps_cmd = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
-
-        # PowerShell-only flow to avoid cmd built-ins like timeout/taskkill
-        ps = (
-            f"$repo = '{repo_ps}'; "
-            "Start-Sleep -Seconds 3; "
-            "$null = Get-Process -Name 'Code','Code - Insiders' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; "
-            "$candidates = @(); "
-            "$candidates += (Join-Path $env:LOCALAPPDATA 'Programs\\Microsoft VS Code\\Code.exe'); "
-            "$candidates += 'C:\\Program Files\\Microsoft VS Code\\Code.exe'; "
-            "$candidates += 'C:\\Program Files (x86)\\Microsoft VS Code\\Code.exe'; "
-            "$candidates += (Join-Path $env:LOCALAPPDATA 'Microsoft\\WindowsApps\\Code.exe'); "
-            "$codePath = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1; "
-            "if ($codePath) { Start-Process -FilePath $codePath -ArgumentList @($repo) } else { Start-Process -FilePath 'code' -ArgumentList @($repo) }"
-        )
-
-        # Launch detached PowerShell with execution policy bypass
-        creation_flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
-            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
-        )
-        subprocess.Popen(
-            [
-                ps_cmd,
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                ps,
-            ],
-            creationflags=creation_flags,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        # Minimal fallback: just open code at repo (may not close existing VS Code)
-        try:
-            subprocess.Popen(
-                ["cmd", "/d", "/c", "start", "", "code", repo],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except Exception:
-            pass
-
-
 def main() -> int:
     enable_windows_ansi_colors()
     banner("NotSteam Repo Setup")
@@ -368,8 +309,6 @@ def main() -> int:
         f"Activate your environment with: {colorize(str(root / '.venv' / 'Scripts' / 'activate'), Style.BOLD)}"
     )
     print("If activation fails, open a new terminal and try again.")
-    # Spawn a detached PS to restart VS Code so new terminals inherit updated PATH
-    spawn_vscode_restart(root)
     return 0
 
 
