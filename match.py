@@ -38,13 +38,18 @@ def match(pattern: List[str], source: List[str]) -> List[str]:
             else:
                 accum = ""
                 pind += 1
-                while pattern[pind].lower() != source[sind].lower():
-                    accum += " " + source[sind]
-                    sind += 1
-
-                    # abort in case we've run out of source with more pattern left
+                # Consume source until the next pattern token is found,
+                # or fail if we run out of source.
+                while True:
+                    # If we've exhausted the source without finding the next token, no match
                     if sind >= len(source):
                         return None
+                    # If the next pattern token equals the current source token, stop consuming
+                    if pattern[pind].lower() == source[sind].lower():
+                        break
+                    # Otherwise, accumulate and advance through source
+                    accum += " " + source[sind]
+                    sind += 1
 
                 result.append(accum.strip())
 

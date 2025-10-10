@@ -321,7 +321,28 @@ def list_vr_games(matches: List[str]) -> List[str]:
     limit = _parse_limit(matches, default=25)
     page = games_api.list_games_by_vr(True, limit=limit)
     games = _extract_docs(page)
-    return _names_list(games) or ["No answers"]
+    # Backfill with 'vr' tag if fewer than requested
+    if len(games) < limit:
+        tag_page = games_api.list_games_by_tag("vr", limit=limit - len(games))
+        tag_games = _extract_docs(tag_page)
+        # De-duplicate by id if present or by display_name as fallback
+        seen_keys = set()
+        def key(g: dict) -> str:
+            gid = g.get("_id")
+            if isinstance(gid, str):
+                return gid
+            name = g.get("display_name")
+            return f"name::{name}" if name else str(g)
+        for g in games:
+            seen_keys.add(key(g))
+        for g in tag_games:
+            k = key(g)
+            if k not in seen_keys:
+                games.append(g)
+                seen_keys.add(k)
+            if len(games) >= limit:
+                break
+    return _names_list(games[:limit]) or ["No answers"]
 
 def list_requires_online_games(matches: List[str]) -> List[str]:
     limit = _parse_limit(matches, default=25)

@@ -119,48 +119,60 @@ def list_games_by_publisher(publisher: str, cursor: Optional[str] = None, limit:
 def list_games_by_vr(is_vr: bool, cursor: Optional[str] = None, limit: int = 25) -> Dict[str, Any]:
     client = _make_client()
     # Fetch until we hit limit or no more pages
-    page = client.query(
-        "games:listGamesByVR",
-        {"is_vr": bool(is_vr), "cursor": cursor, "limit": min(limit, 100)},
-    )
+    first_args: Dict[str, Any] = {"is_vr": bool(is_vr), "limit": min(limit, 100)}
+    if cursor is not None:
+        first_args["cursor"] = cursor
+    page = client.query("games:listGamesByVR", first_args)
     docs: List[Dict[str, Any]] = page.get("page") or []
     while len(docs) < limit and page and not page.get("isDone"):
-        page = client.query(
-            "games:listGamesByVR",
-            {"is_vr": bool(is_vr), "cursor": page.get("continueCursor"), "limit": min(limit - len(docs), 100)},
-        )
+        next_args: Dict[str, Any] = {
+            "is_vr": bool(is_vr),
+            "limit": min(limit - len(docs), 100),
+        }
+        next_cursor = page.get("continueCursor")
+        if next_cursor is not None:
+            next_args["cursor"] = next_cursor
+        page = client.query("games:listGamesByVR", next_args)
         docs.extend(page.get("page") or [])
     return {"page": docs[:limit], "isDone": True, "continueCursor": None}
 
 
 def list_games_by_requires_online(requires_online: bool, cursor: Optional[str] = None, limit: int = 25) -> Dict[str, Any]:
     client = _make_client()
-    page = client.query(
-        "games:listGamesByOnlineRequirement",
-        {"requires_online": bool(requires_online), "cursor": cursor, "limit": min(limit, 100)},
-    )
+    first_args: Dict[str, Any] = {"requires_online": bool(requires_online), "limit": min(limit, 100)}
+    if cursor is not None:
+        first_args["cursor"] = cursor
+    page = client.query("games:listGamesByOnlineRequirement", first_args)
     docs: List[Dict[str, Any]] = page.get("page") or []
     while len(docs) < limit and page and not page.get("isDone"):
-        page = client.query(
-            "games:listGamesByOnlineRequirement",
-            {"requires_online": bool(requires_online), "cursor": page.get("continueCursor"), "limit": min(limit - len(docs), 100)},
-        )
+        next_args: Dict[str, Any] = {
+            "requires_online": bool(requires_online),
+            "limit": min(limit - len(docs), 100),
+        }
+        next_cursor = page.get("continueCursor")
+        if next_cursor is not None:
+            next_args["cursor"] = next_cursor
+        page = client.query("games:listGamesByOnlineRequirement", next_args)
         docs.extend(page.get("page") or [])
     return {"page": docs[:limit], "isDone": True, "continueCursor": None}
 
 
 def list_games_by_price_model(price_model: str, cursor: Optional[str] = None, limit: int = 25) -> Dict[str, Any]:
     client = _make_client()
-    page = client.query(
-        "games:listGamesByPriceModel",
-        {"price_model": price_model, "cursor": cursor, "limit": min(limit, 100)},
-    )
+    first_args: Dict[str, Any] = {"price_model": price_model, "limit": min(limit, 100)}
+    if cursor is not None:
+        first_args["cursor"] = cursor
+    page = client.query("games:listGamesByPriceModel", first_args)
     docs: List[Dict[str, Any]] = page.get("page") or []
     while len(docs) < limit and page and not page.get("isDone"):
-        page = client.query(
-            "games:listGamesByPriceModel",
-            {"price_model": price_model, "cursor": page.get("continueCursor"), "limit": min(limit - len(docs), 100)},
-        )
+        next_args: Dict[str, Any] = {
+            "price_model": price_model,
+            "limit": min(limit - len(docs), 100),
+        }
+        next_cursor = page.get("continueCursor")
+        if next_cursor is not None:
+            next_args["cursor"] = next_cursor
+        page = client.query("games:listGamesByPriceModel", next_args)
         docs.extend(page.get("page") or [])
     return {"page": docs[:limit], "isDone": True, "continueCursor": None}
 
