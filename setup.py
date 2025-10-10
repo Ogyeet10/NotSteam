@@ -284,6 +284,30 @@ def try_locate_uv_executable() -> Union[Path, None]:
     return candidates[0] if candidates else None
 
 
+def ensure_dotenv_created() -> bool:
+    """Create or update a .env file with required starter contents."""
+    env_path = repo_root() / ".env"
+    desired = "CONVEX_URL=https://unique-condor-115.convex.cloud\n"
+    try:
+        if env_path.exists():
+            try:
+                current = env_path.read_text(encoding="utf-8")
+            except Exception:
+                current = ""
+            if current.strip() == desired.strip():
+                success(".env already exists with required contents.")
+                return True
+            warn("Updating existing .env with required contents…")
+        else:
+            step("Creating .env with starter contents…")
+        env_path.write_text(desired, encoding="utf-8")
+        success(f"Wrote {env_path.name}.")
+        return True
+    except Exception as exc:
+        error(f"Failed to write .env: {exc}")
+        return False
+
+
 def main() -> int:
     enable_windows_ansi_colors()
     banner("NotSteam Repo Setup")
@@ -308,6 +332,8 @@ def main() -> int:
         return 1
 
     root = repo_root()
+    # Create/update .env with required Convex URL
+    ensure_dotenv_created()
     print()
     if platform.system() == "Windows" and UV_JUST_INSTALLED:
         warn(
