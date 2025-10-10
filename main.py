@@ -141,6 +141,14 @@ def game_by_year(matches: List[str]) -> List[str]:
     games = _extract_docs(page)
     return _names_list(games)
 
+def game_by_year_with_limit(matches: List[str]) -> List[str]:
+    """Returns up to N games made in a specific year."""
+    limit = int(matches[0])
+    year = int(matches[1])
+    page = games_api.list_games_by_year(year, limit=limit)
+    games = _extract_docs(page)
+    return _names_list(games)
+
 def game_by_year_range(matches: List[str]) -> List[str]:
     """Returns games made between two years."""
     y1, y2 = int(matches[0]), int(matches[1])
@@ -394,6 +402,9 @@ def list_games_tagged(matches: List[str]) -> List[str]:
     else:
         tag = matches[0]
         limit = 25
+    # Ignore meaningless tags
+    if (tag or "").strip().lower() in {"game", "games"}:
+        return ["I don't understand"]
     # Try normalized candidates for better recall
     for candidate in _normalize_tag_candidates(tag):
         page = games_api.list_games_by_tag(candidate, limit=limit)
@@ -410,9 +421,21 @@ def list_games_tagged_flexible(matches: List[str]) -> List[str]:
     if len(matches) == 2 and matches[0].isdigit():
         limit = int(matches[0])
         tag = matches[1]
+    elif len(matches) == 1:
+        # Support a single capture like "100 metroidvanias"
+        parts = str(matches[0]).strip().split(maxsplit=1)
+        if len(parts) == 2 and parts[0].isdigit():
+            limit = int(parts[0])
+            tag = parts[1]
+        else:
+            tag = matches[0]
+            limit = 25
     else:
         tag = matches[0]
         limit = 25
+    # Ignore meaningless tags
+    if (tag or "").strip().lower() in {"game", "games"}:
+        return ["I don't understand"]
     tag = _singularize_tag(tag)
     for candidate in _normalize_tag_candidates(tag):
         page = games_api.list_games_by_tag(candidate, limit=limit)
@@ -508,6 +531,9 @@ pa_list: List[Tuple[List[str], Callable[[List[str]], List[Any]]]] = [
     (str.split("how do i use this"), show_help),
     (str.split("?"), show_help),
     (str.split("what games were made in _"), game_by_year),
+    # Explicit limit + year variants
+    (str.split("show me _ games made in _"), game_by_year_with_limit),
+    (str.split("show _ games made in _"), game_by_year_with_limit),
     (str.split("what games were made between _ and _"), game_by_year_range),
     (str.split("what games were made before _"), game_before_year),
     (str.split("what games were made after _"), game_after_year),
@@ -596,9 +622,17 @@ def search_pa_list(src: List[str]) -> List[str] | None:
         ["No answers"] if it finds a match but no answers. Returns None if handler
         already rendered output directly.
     """
+    # Short-circuit extremely vague inputs
+    joined = " ".join(w.lower() for w in src).strip()
+    if not src or joined in {"show", "show me", "show games"}:
+        return ["I don't understand"]
+
     for pat, act in pa_list:
         mat = match(pat, src)
         if mat is not None:
+            # Treat empty captures as no-match to avoid nonsense on vague inputs
+            if any((m is None) or (str(m).strip() == "") for m in mat):
+                continue
             answer = act(mat)
             if answer is None:
                 return None  # Handler already rendered
