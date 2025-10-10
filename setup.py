@@ -287,31 +287,65 @@ def spawn_vscode_restart(target_dir: Path) -> None:
     if platform.system() != "Windows":
         return
     try:
-        # Use taskkill to force-close all Code.exe instances, then relaunch VS Code.
         repo = str(target_dir.resolve())
-        ps = (
-            "Start-Sleep -Seconds 3; "
-            "try { taskkill /IM Code.exe /F /T | Out-Null } catch { }; "
-            "$codeExe = Join-Path $env:LOCALAPPDATA 'Programs\\Microsoft VS Code\\Code.exe'; "
-            f"if (Test-Path $codeExe) {{ Start-Process -FilePath $codeExe -ArgumentList @('\"{repo}\"') }} "
-            f"else {{ Start-Process -FilePath 'code' -ArgumentList @('\"{repo}\"') }}"
-        )
-        creation_flags = 0
-        if os.name == "nt":
-            # Detach so the new PowerShell continues after this script exits
-            creation_flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
-                subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+
+        # Determine which PowerShell is available
+        ps_cmd = shutil.which("powershell") or shutil.which("pwsh")
+
+        if ps_cmd:
+            # Build a robust PowerShell one-liner:
+            # - delay 3s
+            # - kill Code.exe and Code - Insiders.exe if present
+            # - probe common Code.exe locations; otherwise fall back to `code`
+            ps = (
+                "Start-Sleep -Seconds 3; "
+                # Kill both stable and insiders silently
+                "try { taskkill /IM 'Code.exe' /F /T | Out-Null } catch { }; "
+                "try { taskkill /IM 'Code - Insiders.exe' /F /T | Out-Null } catch { }; "
+                # Candidate paths
+                "$candidates = @(); "
+                "$candidates += (Join-Path $env:LOCALAPPDATA 'Programs\\Microsoft VS Code\\Code.exe'); "
+                "$candidates += 'C:\\Program Files\\Microsoft VS Code\\Code.exe'; "
+                "$candidates += 'C:\\Program Files (x86)\\Microsoft VS Code\\Code.exe'; "
+                "$candidates += (Join-Path $env:LOCALAPPDATA 'Microsoft\\WindowsApps\\Code.exe'); "
+                "$codePath = $null; foreach ($p in $candidates) { if (Test-Path $p) { $codePath = $p; break } } ; "
+                f"if ($codePath) {{ Start-Process -FilePath $codePath -ArgumentList @('\"{repo}\"') }} "
+                f"else {{ Start-Process -FilePath 'code' -ArgumentList @('\"{repo}\"') }}"
             )
+
+            # Use cmd's start to force a new window and detach from this process/VS Code
+            subprocess.Popen(
+                [
+                    "cmd",
+                    "/d",
+                    "/c",
+                    "start",
+                    "",
+                    ps_cmd,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    ps,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return
+
+        # Fallback without PowerShell: use cmd only
         subprocess.Popen(
             [
-                "powershell",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                ps,
+                "cmd",
+                "/d",
+                "/c",
+                "start",
+                "",
+                "cmd",
+                "/d",
+                "/c",
+                f"timeout /t 3 /nobreak >nul & taskkill /IM Code.exe /F /T & taskkill /IM \"Code - Insiders.exe\" /F /T & start \"\" code \"{repo}\"",
             ],
-            creationflags=creation_flags,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
