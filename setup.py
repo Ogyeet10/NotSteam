@@ -90,6 +90,7 @@ def command_exists(command: str) -> bool:
 
 # Tracks the best-known invocation for uv, e.g. 'uv' or a full path to uv.exe
 UV_CMD = ["uv"]
+UV_JUST_INSTALLED = False
 
 
 def run_passthrough(cmd: Union[str, Iterable[str]], check: bool = False) -> int:
@@ -158,6 +159,10 @@ def ensure_uv_available() -> bool:
             "Failed to install uv via winget (see output above). You may need to accept prompts or run as Administrator."
         )
         return False
+
+    # Mark that we installed uv in this run to inform the user about VS Code restart
+    global UV_JUST_INSTALLED
+    UV_JUST_INSTALLED = True
 
     # Attempt to refresh PATH in this process so newly added locations are visible
     refresh_process_env_path()
@@ -304,6 +309,10 @@ def main() -> int:
 
     root = repo_root()
     print()
+    if platform.system() == "Windows" and UV_JUST_INSTALLED:
+        warn(
+            "In VS Code, the `uv` command WILL NOT be available in the integrated terminal until you RESTART VSCode."
+        )
     success("Setup complete!")
     print(
         f"Activate your environment with: {colorize(str(root / '.venv' / 'Scripts' / 'activate'), Style.BOLD)}"
