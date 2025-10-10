@@ -279,6 +279,47 @@ def try_locate_uv_executable() -> Union[Path, None]:
     return candidates[0] if candidates else None
 
 
+def spawn_vscode_restart(target_dir: Path) -> None:
+    """Spawn a detached PowerShell that waits 3s, closes Code.exe, and reopens VS Code at target_dir.
+
+    This helps terminals pick up PATH/env changes. Best effort only; errors are ignored.
+    """
+    if platform.system() != "Windows":
+        return
+    try:
+        # Use taskkill to force-close all Code.exe instances, then relaunch VS Code.
+        repo = str(target_dir.resolve())
+        ps = (
+            "Start-Sleep -Seconds 3; "
+            "try { taskkill /IM Code.exe /F /T | Out-Null } catch { }; "
+            "$codeExe = Join-Path $env:LOCALAPPDATA 'Programs\\Microsoft VS Code\\Code.exe'; "
+            f"if (Test-Path $codeExe) {{ Start-Process -FilePath $codeExe -ArgumentList @('\"{repo}\"') }} "
+            f"else {{ Start-Process -FilePath 'code' -ArgumentList @('\"{repo}\"') }}"
+        )
+        creation_flags = 0
+        if os.name == "nt":
+            # Detach so the new PowerShell continues after this script exits
+            creation_flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+                subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+            )
+        subprocess.Popen(
+            [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                ps,
+            ],
+            creationflags=creation_flags,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        # Best effort only.
+        pass
+
+
 def main() -> int:
     enable_windows_ansi_colors()
     banner("NotSteam Repo Setup")
@@ -309,6 +350,8 @@ def main() -> int:
         f"Activate your environment with: {colorize(str(root / '.venv' / 'Scripts' / 'activate'), Style.BOLD)}"
     )
     print("If activation fails, open a new terminal and try again.")
+    # Spawn a detached PS to restart VS Code so new terminals inherit updated PATH
+    spawn_vscode_restart(root)
     return 0
 
 
