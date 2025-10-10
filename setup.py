@@ -317,7 +317,6 @@ def main() -> int:
     print(
         f"Activate your environment with: {colorize(str(root / '.venv' / 'Scripts' / 'activate'), Style.BOLD)}"
     )
-    print("If activation fails, open a new terminal and try again.")
     return 0
 
 
