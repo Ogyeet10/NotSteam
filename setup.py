@@ -19,6 +19,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Iterable, Union
+from glob import glob
 
 
 def enable_windows_ansi_colors() -> None:
@@ -85,6 +86,10 @@ def repo_root() -> Path:
 
 def command_exists(command: str) -> bool:
     return shutil.which(command) is not None
+
+
+# Tracks the best-known invocation for uv, e.g. 'uv' or a full path to uv.exe
+UV_CMD = ["uv"]
 
 
 def run_passthrough(cmd: Union[str, Iterable[str]], check: bool = False) -> int:
@@ -154,6 +159,9 @@ def ensure_uv_available() -> bool:
         )
         return False
 
+    # Attempt to refresh PATH in this process so newly added locations are visible
+    refresh_process_env_path()
+
     # Re-check PATH for uv
     if command_exists("uv"):
         success("`uv` installed and detected on PATH.")
@@ -163,6 +171,16 @@ def ensure_uv_available() -> bool:
     rc = run_passthrough(["uv", "--version"], check=False)
     if rc == 0:
         success("`uv` is available.")
+        return True
+
+    # Fallback: try to locate uv.exe in common WinGet locations and use absolute path
+    uv_path = try_locate_uv_executable()
+    if uv_path:
+        global UV_CMD
+        UV_CMD = [str(uv_path)]
+        warn(
+            f"Using uv at: {uv_path} (PATH may require a new terminal to update)."
+        )
         return True
 
     warn(
@@ -181,7 +199,7 @@ def ensure_project_env_synced() -> bool:
         step("No .venv found. Creating environment and installing dependencies with `uv sync`…")
 
     # Prefer `uv sync` since this project includes `uv.lock`/`pyproject.toml`
-    rc = run_passthrough(["uv", "sync"], check=False)
+    rc = run_passthrough([*UV_CMD, "sync"], check=False)
     if rc != 0:
         error("`uv sync` failed (see output above).")
         return False
@@ -189,17 +207,76 @@ def ensure_project_env_synced() -> bool:
     if not venv_dir.exists():
         # `uv sync` should create .venv by default; if not, fall back to explicit venv creation
         warn("`.venv` not found after sync. Creating venv explicitly and syncing again…")
-        rc_venv = run_passthrough(["uv", "venv"], check=False)
+        rc_venv = run_passthrough([*UV_CMD, "venv"], check=False)
         if rc_venv != 0:
             error("`uv venv` failed to create a virtual environment.")
             return False
-        rc_sync = run_passthrough(["uv", "sync"], check=False)
+        rc_sync = run_passthrough([*UV_CMD, "sync"], check=False)
         if rc_sync != 0:
             error("`uv sync` failed after creating venv.")
             return False
 
     success("Environment is ready.")
     return True
+
+
+def refresh_process_env_path() -> None:
+    """Refresh PATH in the current process from registry values (Windows only).
+
+    This makes newly added installer paths visible without restarting PowerShell.
+    Also ensures the WinGet Links directory is included for newly created aliases.
+    """
+    if platform.system() != "Windows":
+        return
+    try:
+        # Read Machine and User PATH from registry and combine.
+        import winreg  # type: ignore
+
+        parts = []
+        try:
+            with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+            ) as key:
+                val, _ = winreg.QueryValueEx(key, "Path")
+                if val:
+                    parts.append(val)
+        except Exception:
+            pass
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
+                val, _ = winreg.QueryValueEx(key, "Path")
+                if val:
+                    parts.append(val)
+        except Exception:
+            pass
+
+        combined = ";".join([p for p in parts if p])
+        if combined:
+            os.environ["PATH"] = combined
+    except Exception:
+        # Best effort only.
+        pass
+
+    # Ensure WinGet Links directory is present in the process PATH for aliases like uv/uvx
+    links = Path(os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links"))
+    if links.exists():
+        current = os.environ.get("PATH", "")
+        if str(links) not in current:
+            os.environ["PATH"] = f"{str(links)};{current}" if current else str(links)
+
+
+def try_locate_uv_executable() -> Union[Path, None]:
+    """Search common WinGet link locations for uv.exe as a fallback."""
+    if platform.system() != "Windows":
+        return None
+    candidates: list[Path] = []
+    links_dir = Path(os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links"))
+    if links_dir.exists():
+        for pattern in ("uv.exe", "uvx.exe"):
+            for match in links_dir.glob(pattern):
+                candidates.append(match)
+    return candidates[0] if candidates else None
 
 
 def main() -> int:
