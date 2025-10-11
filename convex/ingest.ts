@@ -43,6 +43,8 @@ export const addGame = mutation({
     // Accept an Id, null, or a string (display name) to resolve.
     parent_game: v.optional(v.union(v.id("games"), v.null(), v.string())),
     procedurally_generated: v.optional(v.union(v.boolean(), v.null())),
+    // Optional aliases to attach during insertion
+    aliases: v.optional(v.union(v.array(v.string()), v.null())),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -60,6 +62,20 @@ export const addGame = mutation({
       .unique();
 
     if (existing) {
+      // If aliases were included, attach them to existing game as well
+      const aliases = (args.aliases ?? undefined) as
+        | (string[] | undefined)
+        | undefined;
+      if (aliases && aliases.length > 0) {
+        for (const a of aliases) {
+          const aliasNorm = normalizeString(a);
+          if (!aliasNorm) continue;
+          await ctx.db.insert("game_aliases", {
+            gameId: existing._id,
+            alias: aliasNorm,
+          });
+        }
+      }
       return { _id: existing._id, inserted: false };
     }
 
@@ -157,6 +173,78 @@ export const addGame = mutation({
       "input"
     );
 
+    // Insert aliases into game_aliases table (normalized)
+    const aliases = (args.aliases ?? undefined) as
+      | (string[] | undefined)
+      | undefined;
+    if (aliases && aliases.length > 0) {
+      for (const a of aliases) {
+        const aliasNorm = normalizeString(a);
+        if (!aliasNorm) continue;
+        await ctx.db.insert("game_aliases", { gameId, alias: aliasNorm });
+      }
+    }
+
     return { _id: gameId, inserted: true };
+  },
+});
+
+export const upsertAliases = mutation({
+  args: {
+    // Title of the game (display or normalized); we'll try both
+    title: v.string(),
+    aliases: v.array(v.string()),
+    notes: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const title = args.title;
+    const normalizedCandidate = normalizeString(title);
+
+    // Try to find game by normalized_name first using both raw and normalizedCandidate
+    let game = await ctx.db
+      .query("games")
+      .withIndex("by_normalized_name", (q) => q.eq("normalized_name", title))
+      .unique();
+    if (!game && normalizedCandidate && normalizedCandidate !== title) {
+      game = await ctx.db
+        .query("games")
+        .withIndex("by_normalized_name", (q) =>
+          q.eq("normalized_name", normalizedCandidate)
+        )
+        .unique();
+    }
+    // Fallback: text search on display_name
+    if (!game) {
+      const hits = await ctx.db
+        .query("games")
+        .withSearchIndex("search_display_name", (q) =>
+          q.search("display_name", title)
+        )
+        .take(1);
+      game = hits[0];
+    }
+    if (!game) {
+      return { _id: null, upserted: 0 } as any;
+    }
+
+    let upserted = 0;
+    for (const a of args.aliases) {
+      const aliasNorm = normalizeString(a);
+      if (!aliasNorm) continue;
+      // Check if alias already exists for this game
+      const existingForAlias = await ctx.db
+        .query("game_aliases")
+        .withIndex("by_alias", (q) => q.eq("alias", aliasNorm))
+        .take(50);
+      const already = existingForAlias.some((row) => row.gameId === game!._id);
+      if (already) continue;
+      await ctx.db.insert("game_aliases", {
+        gameId: game._id,
+        alias: aliasNorm,
+        notes: args.notes ?? undefined,
+      });
+      upserted += 1;
+    }
+    return { _id: game._id, upserted } as any;
   },
 });

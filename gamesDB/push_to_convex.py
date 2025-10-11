@@ -38,6 +38,36 @@ def _call_add_game(client: ConvexClient, payload: Dict[str, Any], retries: int =
             time.sleep(base_delay * (2 ** (attempt - 1)))
 
 
+def _call_upsert_aliases(client: ConvexClient, payload: Dict[str, Any], retries: int = 3, base_delay: float = 0.2) -> bool:
+    """Return True if any aliases were upserted, else False (counts as skipped)."""
+    attempt = 0
+    while True:
+        try:
+            res = client.mutation("ingest:upsertAliases", payload)
+            # Expect shape: { _id, upserted }
+            if not res or not isinstance(res, dict):
+                return False
+            upserted = res.get("upserted")
+            return bool(isinstance(upserted, int) and upserted > 0)
+        except Exception:
+            attempt += 1
+            if attempt > retries:
+                return False
+            time.sleep(base_delay * (2 ** (attempt - 1)))
+
+
+def _is_alias_payload(obj: Dict[str, Any]) -> bool:
+    """Detects alias-only schema: requires 'title': str and 'aliases': list[str]."""
+    if not isinstance(obj, dict):
+        return False
+    title = obj.get("title")
+    aliases = obj.get("aliases")
+    if not isinstance(title, str) or not isinstance(aliases, list):
+        return False
+    # Ensure aliases are strings (best-effort)
+    return all(isinstance(a, str) for a in aliases)
+
+
 def insert_via_convex_parallel(
     make_client,
     lines: Iterable[str],
@@ -60,6 +90,8 @@ def insert_via_convex_parallel(
         def task():
             client = client_pool.get()
             try:
+                if _is_alias_payload(payload):
+                    return _call_upsert_aliases(client, payload)
                 return _call_add_game(client, payload)
             finally:
                 client_pool.put(client)

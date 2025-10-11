@@ -1,0 +1,29 @@
+{
+  "name": "game_aliases",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Original game title as provided"
+      },
+      "aliases": {
+        "type": "array",
+        "description": "Common short names, nicknames, or acronyms for this game. Can be empty.",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 0,
+        "maxItems": 6
+      },
+      "notes": {
+        "type": ["string", "null"],
+        "description": "Optional rationale or guidance; null if none",
+        "default": null
+      }
+    },
+    "required": ["title", "aliases", "notes"],
+    "additionalProperties": false
+  }
+}

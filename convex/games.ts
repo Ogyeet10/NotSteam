@@ -40,14 +40,24 @@ export const searchGamesByName = query({
         q.search("normalized_name", args.q)
       )
       .take(limit);
+    // Include alias matches by searching alias table and then fetching games
+    const aliasHits = await ctx.db
+      .query("game_aliases")
+      .withSearchIndex("search_alias", (q) => q.search("alias", args.q))
+      .take(limit);
+    const aliasGames = await Promise.all(
+      aliasHits.map((row) => ctx.db.get(row.gameId))
+    );
     const seen: Record<string, boolean> = {};
-    const merged = [...byDisplay, ...byNormalized].filter((g) => {
-      if (!g) return false;
-      const id = g._id.toString();
-      if (seen[id]) return false;
-      seen[id] = true;
-      return true;
-    });
+    const merged = [...byDisplay, ...byNormalized, ...aliasGames].filter(
+      (g) => {
+        if (!g) return false;
+        const id = g._id.toString();
+        if (seen[id]) return false;
+        seen[id] = true;
+        return true;
+      }
+    );
     return merged.slice(0, limit);
   },
 });

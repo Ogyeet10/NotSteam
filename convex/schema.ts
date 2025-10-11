@@ -138,4 +138,14 @@ export default defineSchema({
     .index("by_input_decade", ["input", "release_decade"])
     .index("by_input_year", ["input", "release_year"])
     .index("by_game", ["gameId"]),
+
+  // Store aliases as separate normalized strings per game for indexing and search
+  game_aliases: defineTable({
+    gameId: v.id("games"),
+    alias: v.string(), // normalized lowercase alias/nickname/acronym
+    notes: v.optional(v.string()), // optional rationale/description
+  })
+    .index("by_game", ["gameId"])
+    .index("by_alias", ["alias"]) // exact match index
+    .searchIndex("search_alias", { searchField: "alias" }),
 });
