@@ -39,6 +39,48 @@ def _names_list(games: List[dict]) -> List[str]:
 def _bullets(items: List[str]) -> List[str]:
     return [f"- {i}" for i in items]
 
+def _render_pick_list(candidates: List[dict]) -> None:
+    table = Table(title="Which did you mean?", box=box.ROUNDED, show_header=True)
+    table.add_column("#", style="magenta", no_wrap=True)
+    table.add_column("Name", style="cyan")
+    table.add_column("Year", style="green", no_wrap=True)
+    for idx, g in enumerate(candidates, start=1):
+        name = g.get("display_name", "?")
+        year = g.get("release_year")
+        year_str = str(int(year)) if isinstance(year, (int, float)) else (str(year) if year is not None else "-")
+        table.add_row(str(idx), name, year_str)
+    console.print(table)
+
+def _prompt_pick_index(max_index: int) -> int:
+    while True:
+        try:
+            raw = _session.prompt(f"Pick 1-{max_index} (or 0 to cancel): ")
+        except Exception:
+            raw = console.input(f"Pick 1-{max_index} (or 0 to cancel): ")
+        raw = (raw or "").strip()
+        if raw.isdigit():
+            i = int(raw)
+            if 0 <= i <= max_index:
+                return i
+        console.print("[yellow]Invalid selection[/yellow]")
+
+def resolve_game_interactively(name: str, limit: int = 10) -> dict | None:
+    # Exact by normalized_name first
+    g = games_api.get_game_by_name(name)
+    if g:
+        return g
+    # Otherwise show top matches and let user choose
+    hits = games_api.search_games_by_name(name, limit=limit)
+    if not hits:
+        return None
+    if len(hits) == 1:
+        return hits[0]
+    _render_pick_list(hits)
+    pick = _prompt_pick_index(len(hits))
+    if pick == 0:
+        return None
+    return hits[pick - 1]
+
 def _singularize_tag(tag: str) -> str:
     t = tag.strip().lower()
     if t.endswith("ies") and len(t) > 3:
@@ -189,7 +231,7 @@ def game_after_year(matches: List[str]) -> List[str]:
 def maker_by_game(matches: List[str]) -> List[str]:
     """Returns the maker of a specific game."""
     game = matches[0]
-    g = games_api.get_game_by_name(game)
+    g = resolve_game_interactively(game)
     if not g:
         return ["No answers"]
     maker = g.get("developer") or g.get("publisher") or "Unknown"
@@ -208,7 +250,7 @@ def game_by_maker(matches: List[str]) -> List[str]:
 def year_by_game(matches: List[str]) -> List[str]:
     """Returns the year a game was made."""
     game = matches[0]
-    g = games_api.get_game_by_name(game)
+    g = resolve_game_interactively(game)
     if not g:
         return ["No answers"]
     y = g.get("release_year", "Unknown")
@@ -218,10 +260,7 @@ def year_by_game(matches: List[str]) -> List[str]:
 
 def about_game(matches: List[str]) -> List[str] | None:
     game = matches[0]
-    g = games_api.get_game_by_name(game)
-    if not g:
-        hits = games_api.search_games_by_name(game, limit=1)
-        g = hits[0] if hits else None
+    g = resolve_game_interactively(game)
     if not g:
         return ["No answers"]
     
@@ -303,7 +342,7 @@ def list_games_by_franchise(matches: List[str]) -> List[str]:
 
 def list_platforms_for_game(matches: List[str]) -> List[str]:
     game = matches[0]
-    g = games_api.get_game_by_name(game)
+    g = resolve_game_interactively(game)
     if not g:
         return ["No answers"]
     plats = g.get("platforms") or []
@@ -311,7 +350,7 @@ def list_platforms_for_game(matches: List[str]) -> List[str]:
 
 def list_genres_for_game(matches: List[str]) -> List[str]:
     game = matches[0]
-    g = games_api.get_game_by_name(game)
+    g = resolve_game_interactively(game)
     if not g:
         return ["No answers"]
     genres = g.get("genre") or []
@@ -319,7 +358,7 @@ def list_genres_for_game(matches: List[str]) -> List[str]:
 
 def list_tags_for_game(matches: List[str]) -> List[str]:
     game = matches[0]
-    g = games_api.get_game_by_name(game)
+    g = resolve_game_interactively(game)
     if not g:
         return ["No answers"]
     tags = g.get("tags") or []
@@ -457,7 +496,7 @@ def list_games_tagged_flexible(matches: List[str]) -> List[str]:
 
 def is_free_game(matches: List[str]) -> List[str]:
     game = matches[0]
-    g = games_api.get_game_by_name(game)
+    g = resolve_game_interactively(game)
     if not g:
         return ["No answers"]
     pm = (g.get("price_model") or "").replace(" ", "").lower()

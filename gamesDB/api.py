@@ -28,10 +28,7 @@ def get_game_by_id(game_id: str) -> Optional[Dict[str, Any]]:
 def get_game_by_name(name: str) -> Optional[Dict[str, Any]]:
     client = _make_client()
     g = client.query("games:getGameByNormalizedName", {"normalized_name": name})
-    if g:
-        return g
-    hits = client.query("games:searchGamesByName", {"q": name, "limit": 1}) or []
-    return hits[0] if hits else None
+    return g
 
 
 def search_games_by_name(q: str, limit: int = 20) -> List[Dict[str, Any]]:
