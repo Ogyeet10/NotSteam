@@ -12,6 +12,7 @@ from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import WordCompleter
 
 console = Console()
+VERSION = "1.1.2"
 
 # Helper to normalize Convex paginated vs list responses
 def _extract_docs(page_or_list: Any) -> List[dict]:
@@ -683,10 +684,12 @@ def query_loop() -> None:
     characters and exit gracefully.
     """
     console.print(Panel.fit(
-        "[bold cyan]NotSteam[/bold cyan]\n"
+        f"[bold cyan]NotSteam[/bold cyan] [magenta]v{VERSION}[/magenta]\n"
         "[dim]Ask me anything about games![/dim]",
         border_style="bright_blue"
     ))
+    console.print("")
+    console.print("[dim]Tip: type [bold green]help[/bold green] to see available commands.[/dim]")
     console.print()
     
     while True:
