@@ -4,7 +4,7 @@ Repo bootstrapper for Windows environments using Astral's uv.
 
 Behavior:
 - Validate Windows OS.
-- Ensure `uv` is installed (install with winget if missing, with console passthrough).
+- Ensure `uv` is installed (install via Astral's install script if missing, with console passthrough).
 - Ensure a project virtual environment exists and dependencies are synced via `uv sync`.
 
 Notes:
@@ -123,15 +123,7 @@ def check_python_version(min_major: int = 3, min_minor: int = 9) -> None:
 
 
 def ensure_winget_available() -> bool:
-    if command_exists("winget"):
-        return True
-    warn("`winget` was not found on PATH. Attempting to invoke via shell…")
-    rc = run_passthrough(["winget", "--version"], check=False)
-    if rc == 0:
-        return True
-    error(
-        "winget is not available. Please install App Installer from Microsoft Store, then rerun."
-    )
+    # No longer required; retained for backward compatibility.
     return False
 
 
@@ -140,24 +132,19 @@ def ensure_uv_available() -> bool:
         success("`uv` is already installed.")
         return True
 
-    step("`uv` not found. Installing via winget…")
-    if not ensure_winget_available():
-        return False
-
+    step("`uv` not found. Installing via Astral's install script…")
+    # Install using PowerShell script recommended by Astral
     install_cmd = [
-        "winget",
-        "install",
-        "--id=astral-sh.uv",
-        "-e",
-        "--accept-package-agreements",
-        "--accept-source-agreements",
+        "powershell",
+        "-ExecutionPolicy",
+        "ByPass",
+        "-c",
+        "irm https://astral.sh/uv/install.ps1 | iex",
     ]
 
     rc = run_passthrough(install_cmd, check=False)
     if rc != 0:
-        error(
-            "Failed to install uv via winget (see output above). You may need to accept prompts or run as Administrator."
-        )
+        error("Failed to install uv via install script (see output above).")
         return False
 
     # Mark that we installed uv in this run to inform the user about VS Code restart
@@ -178,7 +165,7 @@ def ensure_uv_available() -> bool:
         success("`uv` is available.")
         return True
 
-    # Fallback: try to locate uv.exe in common WinGet locations and use absolute path
+    # Fallback: try to locate uv.exe in common install locations and use absolute path
     uv_path = try_locate_uv_executable()
     if uv_path:
         global UV_CMD
@@ -270,16 +257,30 @@ def refresh_process_env_path() -> None:
         if str(links) not in current:
             os.environ["PATH"] = f"{str(links)};{current}" if current else str(links)
 
+    # Ensure Astral's default install location is present in the process PATH
+    local_bin = Path(os.path.expandvars(r"%USERPROFILE%\.local\bin"))
+    if local_bin.exists():
+        current = os.environ.get("PATH", "")
+        if str(local_bin) not in current:
+            os.environ["PATH"] = f"{str(local_bin)};{current}" if current else str(local_bin)
+
 
 def try_locate_uv_executable() -> Union[Path, None]:
-    """Search common WinGet link locations for uv.exe as a fallback."""
+    """Search common install locations for uv.exe as a fallback."""
     if platform.system() != "Windows":
         return None
     candidates: list[Path] = []
+    # WinGet links (legacy path if previously installed via winget)
     links_dir = Path(os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links"))
     if links_dir.exists():
         for pattern in ("uv.exe", "uvx.exe"):
             for match in links_dir.glob(pattern):
+                candidates.append(match)
+    # Astral install script default location
+    local_bin = Path(os.path.expandvars(r"%USERPROFILE%\.local\bin"))
+    if local_bin.exists():
+        for pattern in ("uv.exe", "uvx.exe"):
+            for match in local_bin.glob(pattern):
                 candidates.append(match)
     return candidates[0] if candidates else None
 
