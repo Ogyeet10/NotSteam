@@ -128,6 +128,7 @@ def ensure_winget_available() -> bool:
 
 
 def ensure_uv_available() -> bool:
+    global UV_CMD
     if command_exists("uv"):
         success("`uv` is already installed.")
         return True
@@ -171,7 +172,6 @@ def ensure_uv_available() -> bool:
         # Fallback: try to locate uv.exe in common install locations and use absolute path
         uv_path = try_locate_uv_executable()
         if uv_path:
-            global UV_CMD
             UV_CMD = [str(uv_path)]
             warn(
                 f"Using uv at: {uv_path} (PATH may require a new terminal to update)."
@@ -202,7 +202,6 @@ def ensure_uv_available() -> bool:
     # Try common install location on Unix
     uv_unix = Path.home() / ".local" / "bin" / "uv"
     if uv_unix.exists():
-        global UV_CMD
         UV_CMD = [str(uv_unix)]
         warn(f"Using uv at: {uv_unix} (ensure ~/.local/bin is on your PATH).")
         return True
