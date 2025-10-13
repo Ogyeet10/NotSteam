@@ -132,52 +132,82 @@ def ensure_uv_available() -> bool:
         success("`uv` is already installed.")
         return True
 
-    step("`uv` not found. Installing via Astral's install script…")
-    # Install using PowerShell script recommended by Astral
-    install_cmd = [
-        "powershell",
-        "-ExecutionPolicy",
-        "ByPass",
-        "-c",
-        "irm https://astral.sh/uv/install.ps1 | iex",
-    ]
+    system = platform.system()
 
-    rc = run_passthrough(install_cmd, check=False)
+    if system == "Windows":
+        step("`uv` not found. Installing via Astral's install script…")
+        # Install using PowerShell script recommended by Astral
+        install_cmd = [
+            "powershell",
+            "-ExecutionPolicy",
+            "ByPass",
+            "-c",
+            "irm https://astral.sh/uv/install.ps1 | iex",
+        ]
+
+        rc = run_passthrough(install_cmd, check=False)
+        if rc != 0:
+            error("Failed to install uv via install script (see output above).")
+            return False
+
+        # Mark that we installed uv in this run to inform the user about VS Code restart
+        global UV_JUST_INSTALLED
+        UV_JUST_INSTALLED = True
+
+        # Attempt to refresh PATH in this process so newly added locations are visible
+        refresh_process_env_path()
+
+        # Re-check PATH for uv
+        if command_exists("uv"):
+            success("`uv` installed and detected on PATH.")
+            return True
+
+        # Try again via shell in case PATH updates are pending in this session
+        rc = run_passthrough(["uv", "--version"], check=False)
+        if rc == 0:
+            success("`uv` is available.")
+            return True
+
+        # Fallback: try to locate uv.exe in common install locations and use absolute path
+        uv_path = try_locate_uv_executable()
+        if uv_path:
+            global UV_CMD
+            UV_CMD = [str(uv_path)]
+            warn(
+                f"Using uv at: {uv_path} (PATH may require a new terminal to update)."
+            )
+            return True
+
+        warn(
+            "`uv` installation succeeded but not detected in this shell session. Try opening a new terminal if subsequent steps fail."
+        )
+        return command_exists("uv")
+
+    # Non-Windows (macOS/Linux): install via curl | sh
+    step("`uv` not found. Installing via Astral's install script (curl | sh)…")
+    if system == "Linux" and not command_exists("curl"):
+        error("`curl` is required to install uv. Please install curl and re-run this script.")
+        return False
+
+    rc = run_passthrough(["sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"], check=False)
     if rc != 0:
         error("Failed to install uv via install script (see output above).")
         return False
 
-    # Mark that we installed uv in this run to inform the user about VS Code restart
-    global UV_JUST_INSTALLED
-    UV_JUST_INSTALLED = True
-
-    # Attempt to refresh PATH in this process so newly added locations are visible
-    refresh_process_env_path()
-
-    # Re-check PATH for uv
+    # After install, uv is typically placed under ~/.local/bin; PATH may already include it
     if command_exists("uv"):
         success("`uv` installed and detected on PATH.")
         return True
 
-    # Try again via shell in case PATH updates are pending in this session
-    rc = run_passthrough(["uv", "--version"], check=False)
-    if rc == 0:
-        success("`uv` is available.")
-        return True
-
-    # Fallback: try to locate uv.exe in common install locations and use absolute path
-    uv_path = try_locate_uv_executable()
-    if uv_path:
+    # Try common install location on Unix
+    uv_unix = Path.home() / ".local" / "bin" / "uv"
+    if uv_unix.exists():
         global UV_CMD
-        UV_CMD = [str(uv_path)]
-        warn(
-            f"Using uv at: {uv_path} (PATH may require a new terminal to update)."
-        )
+        UV_CMD = [str(uv_unix)]
+        warn(f"Using uv at: {uv_unix} (ensure ~/.local/bin is on your PATH).")
         return True
 
-    warn(
-        "`uv` installation succeeded but not detected in this shell session. Try opening a new terminal if subsequent steps fail."
-    )
+    warn("`uv` installation completed but not detected on PATH in this session. Open a new terminal or ensure ~/.local/bin is in PATH.")
     return command_exists("uv")
 
 
@@ -319,11 +349,6 @@ def main() -> int:
     except Exception:
         pass
 
-    if platform.system() != "Windows":
-        warn("This setup only runs on Windows.")
-        print("You can still work with the repo on non-Windows systems, but you need to use the manual setup in the README.")
-        return 0
-
     step("Checking for `uv`…")
     if not ensure_uv_available():
         return 1
@@ -341,9 +366,12 @@ def main() -> int:
             "In VS Code, the `uv` command WILL NOT be available in the integrated terminal until you RESTART VSCode."
         )
     success("Setup complete!")
-    print(
-        f"Activate your environment with: {colorize(str(root / '.venv' / 'Scripts' / 'activate'), Style.BOLD)}"
+    act_path = (
+        root / ".venv" / "Scripts" / "activate"
+        if platform.system() == "Windows"
+        else root / ".venv" / "bin" / "activate"
     )
+    print(f"Activate your environment with: {colorize(str(act_path), Style.BOLD)}")
     return 0
 
 
