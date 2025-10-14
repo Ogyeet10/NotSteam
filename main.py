@@ -6,17 +6,13 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich import box
-from rich.traceback import install as rich_traceback_install
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import WordCompleter
-from game_editor import add_game_ui
 
 console = Console()
-# Enable Rich pretty tracebacks globally
-rich_traceback_install(show_locals=True)
-VERSION = "1.1.3"
+VERSION = "1.1.2"
 
 # Helper to normalize Convex paginated vs list responses
 def _extract_docs(page_or_list: Any) -> List[dict]:
@@ -137,6 +133,32 @@ def _normalize_tag_candidates(tag: str) -> List[str]:
 
     return [v for v in variants if v]
 
+def _normalize_franchise_candidates(q: str) -> List[str]:
+    t = (q or "").strip()
+    if not t:
+        return []
+    low = t.lower()
+    # Minimal, high-signal franchise synonyms/aliases
+    synonyms: dict[str, str] = {
+        "gta": "grand theft auto",
+        "cod": "call of duty",
+        "ff": "final fantasy",
+        "zelda": "the legend of zelda",
+        "nfs": "need for speed",
+        "mk": "mortal kombat",
+        "assassins creed": "assassin's creed",
+        "assassin creed": "assassin's creed",
+    }
+    base = synonyms.get(low, t)
+    candidates: List[str] = []
+    def add(v: str) -> None:
+        if v and v not in candidates:
+            candidates.append(v)
+    add(base)
+    # Also try title-cased form which often matches stored franchise naming
+    add(base.title())
+    return candidates
+
 def _parse_limit(matches: List[str], default: int = 25) -> int:
     for token in matches:
         tok = token.strip()
@@ -160,8 +182,7 @@ _completer = WordCompleter([
     'describe', 'what is', 'what is about', 'what platforms is',
     'what genres is', 'what genre is', 'what tags does', 'show vr games',
     'show online games', 'show free to play games', 'show paid games',
-    'help', 'commands', 'how do i use this', '?', 'traceback',
-    'add a game',
+    'help', 'commands', 'how do i use this', '?',
     # Common tags & genres (plus a few misspellings)
     'roguelike', 'rougelike', 'roguelite', 'rougelite', 'rogue-like', 'rogue lite',
     'soulslike', 'souls like', 'metroidvania', 'metroidvanias',
@@ -459,7 +480,15 @@ def list_games_tagged(matches: List[str]) -> List[str]:
     # Fallback to original
     page = games_api.list_games_by_tag(tag, limit=limit)
     games = _extract_docs(page)
-    return _names_list(games) or ["No answers"]
+    if games:
+        return _names_list(games)
+    # Try franchise aliases as a final fallback (e.g., "gta" -> "Grand Theft Auto")
+    for fran in _normalize_franchise_candidates(tag):
+        page = games_api.list_games_by_franchise(fran, limit=limit)
+        games = _extract_docs(page)
+        if games:
+            return _names_list(games)
+    return ["No answers"]
 
 def list_games_tagged_flexible(matches: List[str]) -> List[str]:
     # Accept: [tag] or [limit, tag]
@@ -492,9 +521,9 @@ def list_games_tagged_flexible(matches: List[str]) -> List[str]:
     games = _extract_docs(page)
     if games:
         return _names_list(games)
-    # As a last resort, if the phrase looks like a franchise (multi-word), try franchise lookup
-    if len(tag.split()) > 1:
-        page = games_api.list_games_by_franchise(tag, limit=limit)
+    # As a last resort, try franchise lookup including aliases/synonyms
+    for fran in _normalize_franchise_candidates(tag):
+        page = games_api.list_games_by_franchise(fran, limit=limit)
         games = _extract_docs(page)
         if games:
             return _names_list(games)
@@ -568,21 +597,9 @@ def show_help(matches: List[str]) -> List[str] | None:
     console.print("[dim]Tip: You can also use 'show me N ...' to grab more results.[/dim]")
     return None
 
-# Simple interactive flow to "add a game" (stubbed for now)
-def add_game(matches: List[str]) -> List[str] | None:
-    # Delegate to external editor module for cleaner separation of concerns
-    add_game_ui()
-    return None
-
-def trigger_traceback(matches: List[str]) -> List[str]:
-    _ = 1 / 0  # noqa: F841
-    return ["This will never print"]
-
 # The pattern-action list for the natural language query system
 # A list of tuples of pattern and action
 pa_list: List[Tuple[List[str], Callable[[List[str]], List[Any]]]] = [
-    (str.split("traceback"), trigger_traceback),
-    (str.split("add a game"), add_game),
     (str.split("help"), show_help),
     (str.split("commands"), show_help),
     (str.split("how do i use this"), show_help),
