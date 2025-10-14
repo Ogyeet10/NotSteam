@@ -6,13 +6,17 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich import box
+from rich.traceback import install as rich_traceback_install
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import WordCompleter
+from game_editor import add_game_ui
 
 console = Console()
-VERSION = "1.1.2"
+# Enable Rich pretty tracebacks globally
+rich_traceback_install(show_locals=True)
+VERSION = "1.1.3"
 
 # Helper to normalize Convex paginated vs list responses
 def _extract_docs(page_or_list: Any) -> List[dict]:
@@ -156,7 +160,8 @@ _completer = WordCompleter([
     'describe', 'what is', 'what is about', 'what platforms is',
     'what genres is', 'what genre is', 'what tags does', 'show vr games',
     'show online games', 'show free to play games', 'show paid games',
-    'help', 'commands', 'how do i use this', '?',
+    'help', 'commands', 'how do i use this', '?', 'traceback',
+    'add a game',
     # Common tags & genres (plus a few misspellings)
     'roguelike', 'rougelike', 'roguelite', 'rougelite', 'rogue-like', 'rogue lite',
     'soulslike', 'souls like', 'metroidvania', 'metroidvanias',
@@ -563,9 +568,21 @@ def show_help(matches: List[str]) -> List[str] | None:
     console.print("[dim]Tip: You can also use 'show me N ...' to grab more results.[/dim]")
     return None
 
+# Simple interactive flow to "add a game" (stubbed for now)
+def add_game(matches: List[str]) -> List[str] | None:
+    # Delegate to external editor module for cleaner separation of concerns
+    add_game_ui()
+    return None
+
+def trigger_traceback(matches: List[str]) -> List[str]:
+    _ = 1 / 0  # noqa: F841
+    return ["This will never print"]
+
 # The pattern-action list for the natural language query system
 # A list of tuples of pattern and action
 pa_list: List[Tuple[List[str], Callable[[List[str]], List[Any]]]] = [
+    (str.split("traceback"), trigger_traceback),
+    (str.split("add a game"), add_game),
     (str.split("help"), show_help),
     (str.split("commands"), show_help),
     (str.split("how do i use this"), show_help),
