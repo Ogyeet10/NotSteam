@@ -601,6 +601,17 @@ def show_help(matches: List[str]) -> List[str] | None:
 
 # Open the Add Game UI via natural language
 def open_add_game_ui(matches: List[str]) -> List[str] | None:
+    # Require OpenAI key; if missing, show message and exit the interface
+    has_key = bool(os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_TOKEN"))
+    if not has_key:
+        try:
+            # Import only to render the friendly message
+            from game_editor import print_openai_missing_warning  # type: ignore
+            print_openai_missing_warning()
+        except Exception:
+            console.print("[yellow]Add Game requires an OpenAI API key. Set OPENAI_API_KEY and restart.[/yellow]")
+        # Exit the interface
+        raise KeyboardInterrupt()
     try:
         from game_editor import add_game_ui
         add_game_ui()
@@ -734,11 +745,15 @@ def query_loop() -> None:
     """The simple query loop. The try/except structure is to catch Ctrl-C or Ctrl-D
     characters and exit gracefully.
     """
-    console.print(Panel.fit(
+    # Compute OpenAI key status and render inside the intro panel
+    _has_oai = bool(os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_TOKEN"))
+    status_word = "[green]available[/green]" if _has_oai else "[red]unavailable[/red]"
+    intro_content = (
         f"[bold cyan]NotSteam[/bold cyan] [magenta]v{VERSION}[/magenta]\n"
-        "[dim]Ask me anything about games![/dim]",
-        border_style="bright_blue"
-    ))
+        "[dim]Ask me anything about games![/dim]\n"
+        f"[dim]OpenAI:[/dim] {status_word}"
+    )
+    console.print(Panel.fit(intro_content, border_style="bright_blue"))
     console.print("")
     console.print("[dim]Tip: type [bold green]help[/bold green] to see available commands.[/dim]")
     console.print()
@@ -780,16 +795,6 @@ def query_loop() -> None:
 
 def main():
     """Main entry point for the program."""
-    # If no OpenAI key is detected, start the game editor instead of the query interface
-    if not (os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_TOKEN")):
-        try:
-            from game_editor import add_game_ui  # Lazy import to avoid hard dependency
-            add_game_ui()
-            return
-        except Exception:
-            # As a fallback, just inform the user and exit gracefully
-            console.print("[red]OpenAI API key not detected and the editor could not be loaded.[/red]")
-            return
     query_loop()
 
 if __name__ == "__main__":
