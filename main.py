@@ -1,4 +1,5 @@
 from match import match
+import os
 from typing import List, Tuple, Callable, Any
 from gamesDB import api as games_api
 from rich.console import Console
@@ -199,7 +200,7 @@ _completer = WordCompleter([
     'narrative', 'visual novel', 'point and click', 'indie',
     'multiplayer', 'singleplayer', 'co-op', 'coop', 'local co-op', 'online co-op',
     'pvp', 'pve', 'vr', 'online', 'free to play', 'paid',
-    'franchise', 'series'
+    'franchise', 'series', 'add a game', 'add game', 'create game', 'new game'
 ], ignore_case=True)
 
 # Action functions must be defined BEFORE pa_list
@@ -582,6 +583,7 @@ def show_help(matches: List[str]) -> List[str] | None:
         ("Other", [
             "is half life alyx free",
             "when was doom eternal made",
+            "add a game",
         ])
     ]
 
@@ -597,9 +599,24 @@ def show_help(matches: List[str]) -> List[str] | None:
     console.print("[dim]Tip: You can also use 'show me N ...' to grab more results.[/dim]")
     return None
 
+# Open the Add Game UI via natural language
+def open_add_game_ui(matches: List[str]) -> List[str] | None:
+    try:
+        from game_editor import add_game_ui
+        add_game_ui()
+        return None
+    except Exception:
+        console.print("[red]Unable to open the game editor right now.[/red]")
+        return ["No answers"]
+
 # The pattern-action list for the natural language query system
 # A list of tuples of pattern and action
 pa_list: List[Tuple[List[str], Callable[[List[str]], List[Any]]]] = [
+    # Editor commands
+    (str.split("add a game"), open_add_game_ui),
+    (str.split("add game"), open_add_game_ui),
+    (str.split("create game"), open_add_game_ui),
+    (str.split("new game"), open_add_game_ui),
     (str.split("help"), show_help),
     (str.split("commands"), show_help),
     (str.split("how do i use this"), show_help),
@@ -763,6 +780,16 @@ def query_loop() -> None:
 
 def main():
     """Main entry point for the program."""
+    # If no OpenAI key is detected, start the game editor instead of the query interface
+    if not (os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_TOKEN")):
+        try:
+            from game_editor import add_game_ui  # Lazy import to avoid hard dependency
+            add_game_ui()
+            return
+        except Exception:
+            # As a fallback, just inform the user and exit gracefully
+            console.print("[red]OpenAI API key not detected and the editor could not be loaded.[/red]")
+            return
     query_loop()
 
 if __name__ == "__main__":

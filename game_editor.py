@@ -166,3 +166,21 @@ def edit_game_ui(initial_title: Optional[str] = None) -> None:
     _console.print(f"Loaded editor for: {title} [dim](not implemented)[/dim]")
 
 
+# If OpenAI is not configured, provide a user-friendly notice upon import
+if not (_openai_client or os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_TOKEN")):
+    try:
+        _console.print(Panel.fit(
+            "[bold yellow]Heads up[/bold yellow]\n\n"
+            "This feature uses OpenAI to suggest summaries, genres, and tags.\n"
+            "No OpenAI API key was detected.\n\n"
+            "Set the environment variable [bold]OPENAI_API_KEY[/bold] (or [bold]OPENAI_API_TOKEN[/bold]) \n"
+            "and restart to enable AI-assisted suggestions.\n\n"
+            "You can still add a game title; AI suggestions will be skipped.",
+            border_style="yellow",
+            box=box.ROUNDED
+        ))
+    except Exception:
+        # Fallback plain print if rich fails
+        print("OpenAI API key not detected. Set OPENAI_API_KEY to enable AI suggestions.")
+
+
