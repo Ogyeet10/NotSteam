@@ -610,8 +610,8 @@ def open_add_game_ui(matches: List[str]) -> List[str] | None:
             print_openai_missing_warning()
         except Exception:
             console.print("[yellow]Add Game requires an OpenAI API key. Set OPENAI_API_KEY and restart.[/yellow]")
-        # Exit the interface
-        raise KeyboardInterrupt()
+        # Stay in the interface; return to the prompt
+        return None
     try:
         from game_editor import add_game_ui
         add_game_ui()
