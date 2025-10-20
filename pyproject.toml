@@ -7,7 +7,9 @@ requires-python = ">=3.13"
 dependencies = [
     "convex>=0.7.0",
     "httpx>=0.28.1",
+    "openai>=2.4.0",
     "prompt-toolkit>=3.0.52",
     "python-dotenv>=1.1.1",
     "rich>=14.1.0",
+    "textual>=6.2.1",
 ]

@@ -129,6 +129,15 @@
         "minItems": 3,
         "maxItems": 15
       },
+      "aliases": {
+        "type": "array",
+        "description": "Common short names, nicknames, or acronyms for this game. Can be empty.",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 0,
+        "maxItems": 6
+      },
       "rating": {
         "type": "integer",
         "description": "Metacritic score (0-100), use 0 if not available or too new",
@@ -196,6 +205,7 @@
       "story_focus",
       "playtime_hours",
       "tags",
+      "aliases",
       "rating",
       "price_model",
       "has_microtransactions",
