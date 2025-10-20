@@ -1286,6 +1286,13 @@ def edit_game_ui(initial_title: Optional[str] = None) -> None:
         "Type a game title to edit."
     )
     _console.print(Panel.fit(header, border_style="cyan", box=box.ROUNDED))
+    # Require OpenAI for editing flow (same protection as Add Game)
+    if not _openai_client:
+        try:
+            print_openai_missing_warning()
+        except Exception:
+            _console.print("[yellow]Editing requires an OpenAI API key. Set OPENAI_API_KEY and restart.[/yellow]")
+        return
     try:
         title = _session.prompt("🛠 Game to edit: ", default=initial_title or "", bottom_toolbar=_bottom_toolbar)
     except Exception:
@@ -1306,6 +1313,14 @@ def open_edit_ui_with_existing_json(existing: Dict[str, Any]) -> None:
     Parameters:
         existing (Dict[str, Any]): A game classification dictionary to edit; may include an `_id` key to indicate an existing database record.
     """
+    # Require OpenAI for editing flow (same protection as Add Game)
+    if not _openai_client:
+        try:
+            print_openai_missing_warning()
+        except Exception:
+            _console.print("[yellow]Editing requires an OpenAI API key. Set OPENAI_API_KEY and restart.[/yellow]")
+        return
+
     classification: Dict[str, Any] = dict(existing)
     title = str(classification.get("display_name") or classification.get("name") or "This game")
 
