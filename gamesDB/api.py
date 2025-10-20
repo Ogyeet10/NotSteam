@@ -196,3 +196,9 @@ def list_games_by_franchise(franchise: str, cursor: Optional[str] = None, limit:
     if cursor is not None:
         args["cursor"] = cursor
     return client.query("games:listGamesByFranchise", args)
+
+
+def update_game(game_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    client = _make_client()
+    body = {"id": game_id, **payload}
+    return client.mutation("ingest:updateGame", body) or {}

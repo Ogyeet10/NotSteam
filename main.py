@@ -13,7 +13,10 @@ from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import WordCompleter
 
 console = Console()
-VERSION = "1.1.2"
+VERSION = "1.2.1"
+
+# Track the last game the user interacted with for quick edits
+_last_selected_game: dict | None = None
 
 # Helper to normalize Convex paginated vs list responses
 def _extract_docs(page_or_list: Any) -> List[dict]:
@@ -67,21 +70,26 @@ def _prompt_pick_index(max_index: int) -> int:
         console.print("[yellow]Invalid selection[/yellow]")
 
 def resolve_game_interactively(name: str, limit: int = 10) -> dict | None:
+    global _last_selected_game
     # Exact by normalized_name first
     g = games_api.get_game_by_name(name)
     if g:
+        _last_selected_game = g
         return g
     # Otherwise show top matches and let user choose
     hits = games_api.search_games_by_name(name, limit=limit)
     if not hits:
         return None
     if len(hits) == 1:
+        _last_selected_game = hits[0]
         return hits[0]
     _render_pick_list(hits)
     pick = _prompt_pick_index(len(hits))
     if pick == 0:
         return None
-    return hits[pick - 1]
+    sel = hits[pick - 1]
+    _last_selected_game = sel
+    return sel
 
 def _singularize_tag(tag: str) -> str:
     t = tag.strip().lower()
@@ -356,6 +364,61 @@ def about_game(matches: List[str]) -> List[str] | None:
     
     return None  # Already rendered via console
 
+
+def show_edit_instructions(matches: List[str]) -> List[str] | None:
+    """Render a concise, beautiful UI explaining ways to edit games."""
+    header = "[bold cyan]How to Edit Games[/bold cyan]"
+    intro = (
+        "You can open the editor in several ways. \nAfter opening, use the menu to Request changes (LLM revision) or save to the database."
+    )
+
+    table = Table(box=box.ROUNDED, show_header=True, padding=(0, 1))
+    table.add_column("Action", style="bold magenta", no_wrap=True)
+    table.add_column("Examples", style="cyan")
+
+    table.add_row(
+        "After viewing details",
+        "edit\nmake changes",
+    )
+    table.add_row(
+        "Edit by name",
+        "edit portal\nmake changes to skyrim",
+    )
+    table.add_row(
+        "Tips",
+        "• Arrow keys navigate. ESC cancels prompts.\n• 'edit' uses the last game you selected.",
+    )
+
+    console.print(Panel(header, border_style="cyan"))
+    console.print(Panel(intro, border_style="cyan"))
+    console.print(table)
+    return None
+
+
+def open_edit_for_last_game(matches: List[str]) -> List[str] | None:
+    """Open the edit UI using the last selected game, if any.
+
+    If no game was selected in this session yet, prompt the user to choose one.
+    """
+    global _last_selected_game
+    g = _last_selected_game
+    # If an explicit title is provided after the command, try to resolve it
+    if matches:
+        maybe_title = matches[0]
+        if maybe_title and maybe_title.strip():
+            resolved = resolve_game_interactively(maybe_title)
+            if resolved:
+                g = resolved
+                _last_selected_game = g
+    if not g:
+        return ["No answers"]
+    try:
+        from game_editor import open_edit_ui_with_existing_json  # type: ignore
+        open_edit_ui_with_existing_json(g)
+        return None
+    except Exception:
+        return ["No answers"]
+
 def list_games_by_franchise(matches: List[str]) -> List[str]:
     # Accept: [franchise] or [limit, franchise]
     if len(matches) == 2 and matches[0].isdigit():
@@ -561,6 +624,12 @@ def show_help(matches: List[str]) -> List[str] | None:
             "what genres is halo",
             "what tags does minecraft have",
         ]),
+        ("Editing", [
+            "edit",
+            "edit portal",
+            "make changes",
+            "make changes to skyrim",
+        ]),
         ("By maker", [
             "who made DOOM",
             "what games were made by Nintendo",
@@ -628,6 +697,14 @@ pa_list: List[Tuple[List[str], Callable[[List[str]], List[Any]]]] = [
     (str.split("add game"), open_add_game_ui),
     (str.split("create game"), open_add_game_ui),
     (str.split("new game"), open_add_game_ui),
+    # Quick edit commands
+    (str.split("edit"), open_edit_for_last_game),
+    (str.split("edit %"), open_edit_for_last_game),
+    (str.split("make changes"), open_edit_for_last_game),
+    (str.split("make changes to %"), open_edit_for_last_game),
+    # Help for editing
+    (str.split("how do i edit"), show_edit_instructions),
+    (str.split("how to edit"), show_edit_instructions),
     (str.split("help"), show_help),
     (str.split("commands"), show_help),
     (str.split("how do i use this"), show_help),
