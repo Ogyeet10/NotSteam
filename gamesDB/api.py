@@ -191,6 +191,17 @@ def list_games_by_playtime_at_most(max_playtime: float, cursor: Optional[str] = 
 
 
 def list_games_by_franchise(franchise: str, cursor: Optional[str] = None, limit: int = 25) -> Dict[str, Any]:
+    """
+    List games for a franchise with optional pagination.
+    
+    Parameters:
+        franchise (str): The franchise identifier or name to filter games by.
+        cursor (Optional[str]): Continuation token for pagination; pass the previous response's `continueCursor` to retrieve the next page.
+        limit (int): Maximum number of games to request for this call.
+    
+    Returns:
+        Dict[str, Any]: Result dictionary from the backend containing `page` (list of game records) and pagination metadata such as `isDone` and `continueCursor`.
+    """
     client = _make_client()
     args: Dict[str, Any] = {"franchise": franchise, "limit": limit}
     if cursor is not None:
@@ -199,6 +210,16 @@ def list_games_by_franchise(franchise: str, cursor: Optional[str] = None, limit:
 
 
 def update_game(game_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Update fields of an existing game record identified by its id.
+    
+    Parameters:
+        game_id (str): The ID of the game to update.
+        payload (Dict[str, Any]): Mapping of fields and values to apply to the game record.
+    
+    Returns:
+        Dict[str, Any]: The mutation result returned by the backend (updated game data), or an empty dict if the backend response is falsy.
+    """
     client = _make_client()
     body = {"id": game_id, **payload}
     return client.mutation("ingest:updateGame", body) or {}
