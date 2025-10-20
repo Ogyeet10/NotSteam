@@ -20,6 +20,11 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.filters import is_done
 try:
+    # Used to compute terminal width for toolbar alignment
+    from prompt_toolkit.application.current import get_app_or_none  # type: ignore
+except Exception:
+    get_app_or_none = None  # type: ignore
+try:
     # Load environment from .env if present
     from dotenv import load_dotenv  # type: ignore
     load_dotenv()
@@ -77,6 +82,48 @@ def _print_error(message: str, exc: Optional[BaseException] = None) -> None:
         print(message)
         if exc is not None:
             print(f"{type(exc).__name__}: {exc}")
+
+
+def _bottom_toolbar() -> HTML:
+    """Bottom toolbar for prompts in the editor flows.
+
+    Layout targets: left = ESC/back, center = Enter/send, right = Ctrl-C/exit.
+    We compute spacing based on terminal width so items appear on appropriate sides.
+    """
+    try:
+        cols = 80
+        if get_app_or_none is not None:
+            app = get_app_or_none()
+            if app is not None:
+                try:
+                    size = app.output.get_size()
+                    cols = getattr(size, "columns", cols) or cols
+                except Exception:
+                    pass
+
+        left_plain = "ESC: back to NotSteam"
+        center_plain = "Enter: send"
+        right_plain = "Ctrl-C: exit"
+
+        # Compute start columns for center and right ensuring non-overlap
+        start_center = max((cols - len(center_plain)) // 2, len(left_plain) + 1)
+        RIGHT_MARGIN = -3
+        start_right = max(cols - len(right_plain) - RIGHT_MARGIN, start_center + len(center_plain) + 1)
+
+        # Pads between segments
+        pad_center = max(start_center - len(left_plain), 1)
+        pad_right = max(start_right - (start_center + len(center_plain)), 1)
+
+        # Styled segments (tags don't affect visible width)
+        left = '<b><style bg="#FFFFFF">ESC</style></b> back to NotSteam'
+        center = '<b><style bg="#FFFFFF">Enter</style></b> send'
+        right = '<b><style bg="#FFFFFF">Ctrl-C</style></b> exit'
+
+        line = left + (" " * pad_center) + center + (" " * pad_right) + right
+        return HTML(f'<style bg="#606060" fg="#242424">{line}</style>')
+    except Exception:
+        # Simple fallback with same colors
+        return HTML('<style bg="#606060" fg="#242424">ESC: back | Enter: send | Ctrl-C: exit</style>')
 
 
 def _maybe_generate_metadata_with_openai(title: str) -> Dict[str, Any]:
@@ -927,7 +974,7 @@ def add_game_ui() -> None:
             def _esc(event):  # type: ignore[no-redef]
                 event.app.exit(result="")
 
-        title = _session.prompt("🎮 Game name: ", key_bindings=kb) if kb is not None else _session.prompt("🎮 Game name: ")
+        title = _session.prompt("🎮 Game name: ", key_bindings=kb, bottom_toolbar=_bottom_toolbar) if kb is not None else _session.prompt("🎮 Game name: ", bottom_toolbar=_bottom_toolbar)
     except Exception:
         title = _console.input("[bold green]🎮 Game name:[/bold green] ")
 
@@ -999,7 +1046,7 @@ def add_game_ui() -> None:
             if action == "request":
                 # Ask for user-requested changes (no-op)
                 try:
-                    changes = _session.prompt("📝 Describe the changes you want: ")
+                    changes = _session.prompt("📝 Describe the changes you want: ", bottom_toolbar=_bottom_toolbar)
                 except Exception:
                     changes = _console.input("[bold cyan]📝 Describe the changes you want:[/bold cyan] ")
                 # Re-run classification with conversation context
@@ -1036,13 +1083,13 @@ def add_game_ui() -> None:
     except Exception:
         # Fallback if choice UI is unavailable
         try:
-            resp = _session.prompt("Add (a), Request changes (r), Discard (d): ", default="a")
+            resp = _session.prompt("Add (a), Request changes (r), Discard (d): ", default="a", bottom_toolbar=_bottom_toolbar)
         except Exception:
             resp = _console.input("[bold]Add (a), Request changes (r), Discard (d):[/bold] ")
         resp = (resp or "a").strip().lower()
         if resp.startswith("r"):
             try:
-                changes = _session.prompt("📝 Describe the changes you want: ")
+                changes = _session.prompt("📝 Describe the changes you want: ", bottom_toolbar=_bottom_toolbar)
             except Exception:
                 changes = _console.input("[bold cyan]📝 Describe the changes you want:[/bold cyan] ")
             if classification:
@@ -1089,7 +1136,7 @@ def edit_game_ui(initial_title: Optional[str] = None) -> None:
     )
     _console.print(Panel.fit(header, border_style="cyan", box=box.ROUNDED))
     try:
-        title = _session.prompt("🛠 Game to edit: ", default=initial_title or "")
+        title = _session.prompt("🛠 Game to edit: ", default=initial_title or "", bottom_toolbar=_bottom_toolbar)
     except Exception:
         title = _console.input("[bold cyan]🛠 Game to edit:[/bold cyan] ")
     title = (title or "").strip()
@@ -1166,7 +1213,7 @@ def open_edit_ui_with_existing_json(existing: Dict[str, Any]) -> None:
                 break
             if action == "request":
                 try:
-                    changes = _session.prompt("📝 Describe the changes you want: ")
+                    changes = _session.prompt("📝 Describe the changes you want: ", bottom_toolbar=_bottom_toolbar)
                 except Exception:
                     changes = _console.input("[bold cyan]📝 Describe the changes you want:[/bold cyan] ")
                 revised = _revise_classification_with_openai(title, classification, changes or "")
@@ -1186,13 +1233,13 @@ def open_edit_ui_with_existing_json(existing: Dict[str, Any]) -> None:
                 return
     except Exception:
         try:
-            resp = _session.prompt("Add (a), Request changes (r), Discard (d): ", default="a")
+            resp = _session.prompt("Add (a), Request changes (r), Discard (d): ", default="a", bottom_toolbar=_bottom_toolbar)
         except Exception:
             resp = _console.input("[bold]Add (a), Request changes (r), Discard (d):[/bold] ")
         resp = (resp or "a").strip().lower()
         if resp.startswith("r"):
             try:
-                changes = _session.prompt("📝 Describe the changes you want: ")
+                    changes = _session.prompt("📝 Describe the changes you want: ", bottom_toolbar=_bottom_toolbar)
             except Exception:
                 changes = _console.input("[bold cyan]📝 Describe the changes you want:[/bold cyan] ")
             revised = _revise_classification_with_openai(title, classification, changes or "")

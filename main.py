@@ -11,12 +11,51 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.formatted_text import HTML
+try:
+    from prompt_toolkit.application.current import get_app_or_none  # type: ignore
+except Exception:
+    get_app_or_none = None  # type: ignore
 
 console = Console()
 VERSION = "1.2.1"
 
 # Track the last game the user interacted with for quick edits
 _last_selected_game: dict | None = None
+def _bottom_toolbar() -> HTML:
+    """Bottom toolbar for main prompt and pick prompts.
+
+    Left: NotSteam + version, Center: Enter/send, Right: Ctrl-C/exit.
+    """
+    try:
+        cols = 80
+        if get_app_or_none is not None:
+            app = get_app_or_none()
+            if app is not None:
+                try:
+                    size = app.output.get_size()
+                    cols = getattr(size, "columns", cols) or cols
+                except Exception:
+                    pass
+
+        brand_plain = f"NotSteam v{VERSION}"
+        center_plain = "Enter send"
+        right_plain = "Ctrl-C exit"
+
+        start_center = max((cols - len(center_plain)) // 2, len(brand_plain) + 1)
+        RIGHT_MARGIN = 1
+        start_right = max(cols - len(right_plain) - RIGHT_MARGIN, start_center + len(center_plain) + 1)
+        pad_center = max(start_center - len(brand_plain), 1)
+        pad_right = max(start_right - (start_center + len(center_plain)), 1)
+
+        left = f'<b><style bg="#FFFFFF">NotSteam</style></b> v{VERSION}'
+        center = '<b><style bg="#FFFFFF">Enter</style></b> send'
+        right = '<b><style bg="#FFFFFF">Ctrl^C</style></b> exit'
+        line = " " + left + (" " * pad_center) + center + (" " * pad_right) + right
+        return HTML(f'<style bg="#606060" fg="#242424">{line}</style>')
+    except Exception:
+        return HTML(f'<style bg="#606060" fg="#242424"><b><style bg="#0b5fff">NotSteam</style></b> v{VERSION} | Enter: send | Ctrl-C: exit</style>')
+
 
 # Helper to normalize Convex paginated vs list responses
 def _extract_docs(page_or_list: Any) -> List[dict]:
@@ -59,7 +98,7 @@ def _render_pick_list(candidates: List[dict]) -> None:
 def _prompt_pick_index(max_index: int) -> int:
     while True:
         try:
-            raw = _session.prompt(f"Pick 1-{max_index} (or 0 to cancel): ")
+            raw = _session.prompt(f"Pick 1-{max_index} (or 0 to cancel): ", bottom_toolbar=_bottom_toolbar)
         except Exception:
             raw = console.input(f"Pick 1-{max_index} (or 0 to cancel): ")
         raw = (raw or "").strip()
@@ -840,7 +879,7 @@ def query_loop() -> None:
             console.print()
             try:
                 # Use prompt_toolkit for history + arrow navigation
-                query_text = _session.prompt("Your query? ", completer=_completer)
+                query_text = _session.prompt("Your query? ", completer=_completer, bottom_toolbar=_bottom_toolbar)
             except Exception:
                 # Fallback to rich input
                 query_text = console.input("[bold green]Your query?[/bold green] ")
