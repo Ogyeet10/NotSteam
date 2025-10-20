@@ -23,9 +23,16 @@ VERSION = "1.2.1"
 # Track the last game the user interacted with for quick edits
 _last_selected_game: dict | None = None
 def _bottom_toolbar() -> HTML:
-    """Bottom toolbar for main prompt and pick prompts.
-
-    Left: NotSteam + version, Center: Enter/send, Right: Ctrl-C/exit.
+    """
+    Construct a styled bottom toolbar for prompts that displays branding at the left, an action hint in the center, and an exit hint at the right.
+    
+    The toolbar adapts spacing to the current terminal width when prompt_toolkit's application object is available; on any error it returns a compact fallback string. The visual layout places:
+    - Left: "NotSteam v{VERSION}" branding
+    - Center: "Enter send" action hint
+    - Right: "Ctrl-C exit" exit hint
+    
+    Returns:
+        HTML: A prompt_toolkit HTML fragment containing the styled toolbar markup.
     """
     try:
         cols = 80
@@ -59,6 +66,15 @@ def _bottom_toolbar() -> HTML:
 
 # Helper to normalize Convex paginated vs list responses
 def _extract_docs(page_or_list: Any) -> List[dict]:
+    """
+    Normalize an API response that may be a page-wrapped dict or a raw list into a list of document dictionaries.
+    
+    Parameters:
+        page_or_list (Any): A response which may be a dict containing a "page" key, a list of document dicts, or any other value.
+    
+    Returns:
+        List[dict]: The extracted list of document dictionaries from `page_or_list`. If `page_or_list` is a dict, returns its "page" value or an empty list if missing or falsy. If it's already a list, returns it. Otherwise returns an empty list.
+    """
     if isinstance(page_or_list, dict):
         return page_or_list.get("page") or []
     if isinstance(page_or_list, list):
@@ -96,6 +112,18 @@ def _render_pick_list(candidates: List[dict]) -> None:
     console.print(table)
 
 def _prompt_pick_index(max_index: int) -> int:
+    """
+    Prompt the user to choose an index between 1 and max_index, or 0 to cancel.
+    
+    Displays an interactive prompt (falls back to console input) and repeats until the user
+    enters a valid integer within the inclusive range 0..max_index.
+    
+    Parameters:
+        max_index (int): Maximum selectable index (must be >= 1).
+    
+    Returns:
+        int: The selected index; `0` indicates the user cancelled.
+    """
     while True:
         try:
             raw = _session.prompt(f"Pick 1-{max_index} (or 0 to cancel): ", bottom_toolbar=_bottom_toolbar)
@@ -109,6 +137,18 @@ def _prompt_pick_index(max_index: int) -> int:
         console.print("[yellow]Invalid selection[/yellow]")
 
 def resolve_game_interactively(name: str, limit: int = 10) -> dict | None:
+    """
+    Resolve a game name by exact match or by prompting the user to choose from close matches.
+    
+    Attempts an exact resolution first; if that fails, presents up to `limit` search results for interactive selection. Updates the module-level `_last_selected_game` with the chosen or matched game.
+    
+    Parameters:
+        name (str): The game title or query to resolve.
+        limit (int): Maximum number of search candidates to present when no exact match is found.
+    
+    Returns:
+        dict | None: The resolved game record as a dictionary if found or selected, `None` if no match or the user cancels.
+    """
     global _last_selected_game
     # Exact by normalized_name first
     g = games_api.get_game_by_name(name)
@@ -131,6 +171,15 @@ def resolve_game_interactively(name: str, limit: int = 10) -> dict | None:
     return sel
 
 def _singularize_tag(tag: str) -> str:
+    """
+    Return a normalized singular form of a tag string.
+    
+    Parameters:
+        tag (str): Tag text; leading/trailing whitespace is ignored and matching is case-insensitive.
+    
+    Returns:
+        str: Lowercase singular form of the tag. Trailing "ies" becomes "y", trailing "es" or "s" are removed when appropriate; otherwise the cleaned lowercase input is returned unchanged.
+    """
     t = tag.strip().lower()
     if t.endswith("ies") and len(t) > 3:
         return t[:-3] + "y"
@@ -334,6 +383,15 @@ def year_by_game(matches: List[str]) -> List[str]:
     return [str(y)]
 
 def about_game(matches: List[str]) -> List[str] | None:
+    """
+    Render a detailed information panel and table for the game named in the first element of `matches`.
+    
+    Parameters:
+    	matches (List[str]): Token list where the first element is the game name to resolve and display.
+    
+    Returns:
+    	None if game information was rendered to the console, `['No answers']` if the game could not be resolved.
+    """
     game = matches[0]
     g = resolve_game_interactively(game)
     if not g:
@@ -435,9 +493,16 @@ def show_edit_instructions(matches: List[str]) -> List[str] | None:
 
 
 def open_edit_for_last_game(matches: List[str]) -> List[str] | None:
-    """Open the edit UI using the last selected game, if any.
-
-    If no game was selected in this session yet, prompt the user to choose one.
+    """
+    Open the edit UI for the most recently selected game, resolving a title if one is provided.
+    
+    If `matches` contains a game title, attempt to resolve that title and update the global last-selected game cache. If a game is available (from the cache or resolution), launch the edit UI for that game's data. Returns `None` when the editor is opened successfully; returns `["No answers"]` if no game could be resolved or if launching the editor fails.
+    
+    Parameters:
+        matches (List[str]): Optional tokens following the edit command; the first element, if present and non-empty, is treated as a game title to resolve and select.
+    
+    Returns:
+        List[str] | None: `None` when the edit UI was opened; `["No answers"]` when no game is available or an error occurred.
     """
     global _last_selected_game
     g = _last_selected_game
@@ -460,6 +525,17 @@ def open_edit_for_last_game(matches: List[str]) -> List[str] | None:
 
 def list_games_by_franchise(matches: List[str]) -> List[str]:
     # Accept: [franchise] or [limit, franchise]
+    """
+    List games that belong to a given franchise.
+    
+    Accepts input tokens in either of two shapes: [franchise] or [limit, franchise] where the first token is a decimal limit. When a limit is provided it caps the number of results; otherwise a default limit of 25 is used.
+    
+    Parameters:
+        matches (List[str]): Tokens representing the query; either [franchise] or [limit, franchise].
+    
+    Returns:
+        List[str]: A list of display lines for matching games (each prefixed with "- "), or `["No answers"]` if no games are found.
+    """
     if len(matches) == 2 and matches[0].isdigit():
         limit = int(matches[0])
         franchise = matches[1]
@@ -645,6 +721,11 @@ def bye_action(matches: List[str]) -> List[str]:
     return ["Goodbye!"]
 
 def show_help(matches: List[str]) -> List[str] | None:
+    """
+    Render and display the interactive help panel showing categorized example queries and a usage tip.
+    
+    This prints a brief NotSteam introduction, a table of example natural-language queries grouped by topic (year, game details, editing, makers, filters, tags/genres, etc.), and a dimmed tip about using "show me N ..." to request more results.
+    """
     intro = (
         "[bold cyan]NotSteam[/bold cyan] — Natural language queries you can try:\n"
         "Type sentences like these; arrow keys navigate history."
@@ -710,6 +791,19 @@ def show_help(matches: List[str]) -> List[str] | None:
 # Open the Add Game UI via natural language
 def open_add_game_ui(matches: List[str]) -> List[str] | None:
     # Require OpenAI key; if missing, show message and exit the interface
+    """
+    Open the interactive Add Game UI, requiring an OpenAI API key.
+    
+    If an OpenAI API key is not found, prints a user-facing warning and returns to the prompt.
+    If the editor opens successfully, control remains in the interactive session.
+    If opening the editor fails, prints an error message and signals no answers.
+    
+    Parameters:
+    	matches (List[str]): Captured tokens from the matched pattern (may be unused).
+    
+    Returns:
+    	None to continue the interactive loop, `['No answers']` if the editor failed to open.
+    """
     has_key = bool(os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_TOKEN"))
     if not has_key:
         try:
@@ -858,8 +952,10 @@ def search_pa_list(src: List[str]) -> List[str] | None:
     return ["I don't understand"]
 
 def query_loop() -> None:
-    """The simple query loop. The try/except structure is to catch Ctrl-C or Ctrl-D
-    characters and exit gracefully.
+    """
+    Run the interactive query loop for the CLI.
+    
+    Displays an introductory panel, then repeatedly prompts the user for queries, dispatches them to the pattern-action dispatcher, and prints returned answers or user-facing messages. Uses the interactive prompt with history and a bottom toolbar when available, falling back to a simple input method if necessary. Preserves the user's original casing for pattern capture, accepts common exit commands ("bye", "exit", "quit", "q"), and exits gracefully on Ctrl-C or Ctrl-D.
     """
     # Compute OpenAI key status and render inside the intro panel
     _has_oai = bool(os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_TOKEN"))

@@ -72,6 +72,13 @@ But sure, let's pretend this annual cash-grab masquerading as a "live service" i
 
 
 def _print_error(message: str, exc: Optional[BaseException] = None) -> None:
+    """
+    Render an error message to the console using a red Rich panel; if rendering fails, fall back to plain printing.
+    
+    Parameters:
+        message (str): The main error message to display.
+        exc (Optional[BaseException]): An optional exception whose type and message will be appended to the displayed output.
+    """
     try:
         details = message
         if exc is not None:
@@ -85,10 +92,13 @@ def _print_error(message: str, exc: Optional[BaseException] = None) -> None:
 
 
 def _bottom_toolbar() -> HTML:
-    """Bottom toolbar for prompts in the editor flows.
-
-    Layout targets: left = ESC/back, center = Enter/send, right = Ctrl-C/exit.
-    We compute spacing based on terminal width so items appear on appropriate sides.
+    """
+    Render the bottom toolbar used in prompt editor flows.
+    
+    Builds a three-segment toolbar (left: ESC/back, center: Enter/send, right: Ctrl-C/exit) and returns a prompt_toolkit HTML fragment with styling and terminal-width-aware spacing so segments appear on the intended sides.
+    
+    Returns:
+        HTML: A prompt_toolkit `HTML` object containing the styled toolbar markup.
     """
     try:
         cols = 80
@@ -127,9 +137,11 @@ def _bottom_toolbar() -> HTML:
 
 
 def _maybe_generate_metadata_with_openai(title: str) -> Dict[str, Any]:
-    """Optionally call OpenAI to propose metadata fields for the game.
-
-    Returns a metadata dict; empty if OpenAI is unavailable or an error occurs.
+    """
+    Proposes a short summary, genres, and tags for a given game title using the configured OpenAI client.
+    
+    Returns:
+        dict: A metadata dictionary containing keys `summary` (str), `genres` (list[str]), and `tags` (list[str]) when available; an empty dict if the OpenAI client is not configured, the response cannot be parsed, or an error occurs.
     """
     if not _openai_client:
         return {}
@@ -166,7 +178,14 @@ def _maybe_generate_metadata_with_openai(title: str) -> Dict[str, Any]:
 
 
 def _load_classification_schema() -> Dict[str, Any]:
-    """Load the JSON schema used for strict responses formatting."""
+    """
+    Load and return the JSON schema used to validate game classifications.
+    
+    Attempts to read and parse the file gamesDB/game_classification_schema.json located next to this module.
+    
+    Returns:
+        schema (Dict[str, Any]): The parsed JSON schema as a dictionary, or an empty dict on failure.
+    """
     try:
         schema_path = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "gamesDB", "game_classification_schema.json")
@@ -178,7 +197,17 @@ def _load_classification_schema() -> Dict[str, Any]:
 
 
 def _strip_citations(value: Any) -> Any:
-    """Recursively strip inline citation markers from strings."""
+    """
+    Remove inline citation markers (e.g. 'cite...') from strings found anywhere inside the given value.
+    
+    This function processes dicts and lists recursively and preserves non-string values unchanged.
+    
+    Parameters:
+        value (Any): A string, list, dict, or nested structure containing strings to sanitize.
+    
+    Returns:
+        Any: The same structure as `value` with citation markers removed from all strings.
+    """
     if isinstance(value, dict):
         return {k: _strip_citations(v) for k, v in value.items()}
     if isinstance(value, list):
@@ -191,9 +220,18 @@ def _strip_citations(value: Any) -> Any:
 
 
 def _generate_classification_with_openai(title: str) -> Dict[str, Any]:
-    """Call OpenAI Responses API to classify a game into our strict schema.
-
-    Returns an object matching the schema, or an empty dict on failure.
+    """
+    Classify a video game title into the repository's strict JSON schema using the configured OpenAI client.
+    
+    Attempts to produce a single JSON object that matches the schema loaded from disk; if the request is blocked by the moderation tool the function indicates rejection. The function will return an empty dict on any failure or if no valid JSON classification can be obtained.
+    
+    Parameters:
+        title (str): The game title to classify.
+    
+    Returns:
+        Dict[str, Any]: A dictionary matching the classification schema on success;
+            returns {"__rejected__": True} if a moderation rejection occurred;
+            returns an empty dict ({}) on failure or when no valid classification is produced.
     """
     if not _openai_client:
         return {}
@@ -293,6 +331,15 @@ def _generate_classification_with_openai(title: str) -> Dict[str, Any]:
                 with _console.status("[dim]Classifying game (this may take a minute or two)...[/dim]", spinner="dots"):
                     # Heuristic: decide how many recent sections to display based on terminal height
                     def _tail_sections_by_height(h: int) -> int:
+                        """
+                        Select the number of tail sections appropriate for a given vertical height.
+                        
+                        Parameters:
+                        	h (int): Available vertical height in terminal rows.
+                        
+                        Returns:
+                        	sections (int): Number of tail sections (1 through 4) suitable for the provided height.
+                        """
                         if h <= 24:
                             return 1
                         if h <= 40:
@@ -462,11 +509,18 @@ def _generate_classification_with_openai(title: str) -> Dict[str, Any]:
 
 
 def _revise_classification_with_openai(title: str, previous: Dict[str, Any], change_request: str) -> Dict[str, Any]:
-    """Update a prior JSON classification using an additional user change request.
-
-    Sends the previous JSON as an assistant message and the user's change
-    request as the next user message, returning a single strict-JSON object
-    matching the schema.
+    """
+    Revise an existing game classification JSON according to a user's change request and return an updated classification object.
+    
+    Parameters:
+        title (str): The game's title used to contextualize the revision.
+        previous (Dict[str, Any]): The prior classification JSON object to be updated.
+        change_request (str): User-provided instructions describing the desired changes.
+    
+    Returns:
+        Dict[str, Any]: The updated classification object that conforms to the canonical schema.
+        Returns {"__rejected__": True} when the request is rejected for vandalism/prompt-injection.
+        Returns an empty dict on failure or if the OpenAI client or schema is unavailable.
     """
     if not _openai_client:
         return {}
@@ -576,6 +630,15 @@ def _revise_classification_with_openai(title: str, previous: Dict[str, Any], cha
                 live.update(Panel(Markdown(""), title="Reasoning summary", border_style="yellow"), refresh=True)
                 with _console.status("[dim]Updating classification...[/dim]", spinner="dots"):
                     def _tail_sections_by_height(h: int) -> int:
+                        """
+                        Select the number of tail sections appropriate for a given vertical height.
+                        
+                        Parameters:
+                        	h (int): Available vertical height in terminal rows.
+                        
+                        Returns:
+                        	sections (int): Number of tail sections (1 through 4) suitable for the provided height.
+                        """
                         if h <= 24:
                             return 1
                         if h <= 40:
@@ -727,13 +790,17 @@ def _revise_classification_with_openai(title: str, previous: Dict[str, Any], cha
         return {}
 
 def _render_game_summary(data: Dict[str, Any]) -> None:
-    """Pretty-render the classified game JSON using Rich components.
-
-    Layout:
-    - Header panel: title + summary
-    - Two-column details table (year, developer, publisher, price model, rating)
-    - Multi-line sections for lists (platforms, genre, tags, aliases)
-    - Booleans rendered as ✓/✗
+    """
+    Render a classified game record to the console as a human-friendly summary.
+    
+    Displays a header with the game's display name and summary, a two-column details panel for scalar metadata (year, developer, publisher, franchise, price model, rating, world, perspective, age rating, setting, story focus, playtime, parent game), a capabilities panel that shows boolean features as "✓"/"✗" (VR, mods, requires online, cross platform, microtransactions, remake/remaster, DLC, procedural generation), and one-line bulleted panels for collection fields (platforms, genre, tags, aliases, multiplayer_type, input_methods). List panels show up to the first 10 items and indicate if more items exist. Fields that are missing, empty, or null are omitted from the rendered output.
+    
+    Parameters:
+        data (Dict[str, Any]): A classification dictionary for a game, typically containing keys such as
+            "display_name", "summary", "release_year", "developer", "publisher", "franchise",
+            "price_model", "rating", "world_type", "perspective", "age_rating", "setting",
+            "story_focus", "playtime_hours", "parent_game", boolean flags (e.g. "is_vr"),
+            and list fields ("platforms", "genre", "tags", "aliases", "multiplayer_type", "input_methods").
     """
     name = str(data.get("display_name") or "Unknown Game")
     summary = str(data.get("summary") or "No summary available.")
@@ -749,6 +816,15 @@ def _render_game_summary(data: Dict[str, Any]) -> None:
 
     # Details
     def yesno(v: Optional[bool]) -> str:
+        """
+        Return a single-character symbol representing a boolean value.
+        
+        Parameters:
+            v (Optional[bool]): The boolean to represent; may be None.
+        
+        Returns:
+            str: "✓" if v is True, "✗" if v is False, "-" if v is None or any other value.
+        """
         if v is True:
             return "✓"
         if v is False:
@@ -760,6 +836,15 @@ def _render_game_summary(data: Dict[str, Any]) -> None:
     details.add_column("Value", style="cyan")
 
     def add_row(label: str, value: Optional[str | int | float]) -> None:
+        """
+        Add a labeled row to the details table for a non-empty value.
+        
+        Empty values (None, empty string, or empty list) are skipped. Floats that are whole numbers are converted to integers before display; the final value is rendered as a string.
+        
+        Parameters:
+            label (str): The label for the row.
+            value (Optional[str | int | float]): The value to display; omitted if empty.
+        """
         if value is None or value == "" or value == []:
             return
         if isinstance(value, float) and value.is_integer():
@@ -796,6 +881,16 @@ def _render_game_summary(data: Dict[str, Any]) -> None:
 
     # Collections
     def bullets(label: str, arr: Optional[list[str]]) -> Panel | None:
+        """
+        Render a titled Rich Panel containing a bulleted preview of the given string list.
+        
+        Parameters:
+            label (str): Title displayed on the panel.
+            arr (Optional[list[str]]): List of strings to render as bullets; if empty or None, nothing is rendered.
+        
+        Returns:
+            Panel | None: A Rich Panel with up to the first 10 items rendered as bullet lines and an additional line indicating how many items were omitted, or `None` if `arr` is empty or `None`.
+        """
         if not arr:
             return None
         # Limit very long lists visually; show top 10 with remainder count
@@ -844,6 +939,15 @@ def _render_game_summary(data: Dict[str, Any]) -> None:
         _console.print(grid)
 
 def _normalize_string(value: Optional[str]) -> Optional[str]:
+    """
+    Normalize a string by trimming leading/trailing whitespace and converting to lowercase.
+    
+    Parameters:
+        value (Optional[str]): The input value to normalize.
+    
+    Returns:
+        Optional[str]: `None` if `value` is `None`; otherwise the trimmed, lowercase string. If normalization raises an unexpected exception, returns `str(value)`.
+    """
     if value is None:
         return None
     try:
@@ -853,11 +957,36 @@ def _normalize_string(value: Optional[str]) -> Optional[str]:
 
 
 def _map_classification_to_ingest_payload(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Map our classification object to Convex ingest:addGame payload."""
+    """
+    Convert a game classification dictionary into a payload suitable for the Convex ingest:addGame mutation.
+    
+    The input `data` is a classification-like dictionary (from OpenAI or UI). This function:
+    - Chooses `display_name` from `display_name`, `name`, or an empty string and trims whitespace.
+    - Produces `normalized_name` from `normalized_name` if present, otherwise from the normalized `display_name`.
+    - Preserves scalar fields (e.g., `summary`, `release_year`, `developer`, `publisher`, etc.) as-is.
+    - Converts list-valued fields (e.g., `genre`, `platforms`, `multiplayer_type`, `input_methods`, `tags`, `aliases`) to lists of strings; if a field is not a list or is empty it becomes `None`.
+    
+    Parameters:
+        data (Dict[str, Any]): Classification dictionary containing game metadata and lists.
+    
+    Returns:
+        Dict[str, Any]: A payload dictionary mapped to the ingest:addGame schema with normalized names, scalar fields, and list fields converted to string lists or `None`.
+    """
     display_name = str(data.get("display_name") or data.get("name") or "").strip()
     normalized_name = _normalize_string(data.get("normalized_name")) or _normalize_string(display_name)
 
     def _as_str_list(key: str) -> Optional[list[str]]:
+        """
+        Get a list of strings from the external `data` mapping for the given key.
+        
+        Looks up `key` in the surrounding `data` mapping and, if the value is a list, returns a list where each non-None element has been converted to a string. Returns `None` if the key is missing, the value is not a list, or the resulting list is empty.
+        
+        Parameters:
+            key (str): Key to look up in the surrounding `data` mapping.
+        
+        Returns:
+            Optional[list[str]]: List of stringified, non-None items found at `key`, or `None` when no such list exists or it contains no non-None items.
+        """
         val = data.get(key)
         if not isinstance(val, list):
             return None
@@ -904,9 +1033,16 @@ def _map_classification_to_ingest_payload(data: Dict[str, Any]) -> Dict[str, Any
 
 
 def _maybe_persist_game(classification: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Persist to Convex if configured. Returns mutation result dict or None on failure.
-
-    Expects Convex env vars to be set. When missing, returns None so callers can warn.
+    """
+    Persist a game classification to Convex if a Convex client and URL are configured.
+    
+    Attempts a best-effort mutation call to the `ingest:addGame` endpoint and returns the mutation result when successful; returns `None` if Convex is not configured, the mutation fails, or the result is not a dictionary.
+    
+    Parameters:
+        classification (Dict[str, Any]): The game classification data to transform and persist.
+    
+    Returns:
+        Optional[Dict[str, Any]]: The mutation result dictionary on success, `None` otherwise.
     """
     if not ConvexClient:
         return None
@@ -928,7 +1064,18 @@ def _maybe_persist_game(classification: Dict[str, Any]) -> Optional[Dict[str, An
 
 
 def _maybe_update_game(existing_id: Any, classification: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Update an existing game via Convex if configured. Returns result dict or None."""
+    """
+    Update an existing game record in Convex when Convex is configured.
+    
+    Performs a best-effort update; returns None without side effects if the Convex client or URL is not configured or if the update fails.
+    
+    Parameters:
+        existing_id (Any): Identifier of the existing game to update.
+        classification (Dict[str, Any]): Classification dictionary to convert into the Convex ingest payload.
+    
+    Returns:
+        dict: The mutation result when the update succeeds, `None` otherwise.
+    """
     if not ConvexClient:
         return None
     if not _convex_url:
@@ -950,12 +1097,10 @@ def _maybe_update_game(existing_id: Any, classification: Dict[str, Any]) -> Opti
 
 
 def add_game_ui() -> None:
-    """Interactive UI flow for adding a game.
-
-    - Shows a polished panel
-    - Prompts for a game title
-    - Optionally calls OpenAI to propose metadata
-    - Attempts to persist (best-effort) and confirms to the user
+    """
+    Interactive prompt flow to create a game's classification and optionally persist it.
+    
+    Prompts the user for a game title, obtains a structured classification (via OpenAI when configured), renders the classification for review, and presents options to add the entry, request revisions, or discard it. Attempts a best-effort persistence to the configured Convex backend when the user chooses to add; respects moderation rejections from the classification service and falls back to simpler text prompts when advanced UI components are unavailable.
     """
     header = (
         "[bold cyan]Add a Game[/bold cyan]\n\n"
@@ -972,6 +1117,12 @@ def add_game_ui() -> None:
             # Allow ESC to cancel and return to the main query loop by exiting the prompt
             @kb.add("escape")
             def _esc(event):  # type: ignore[no-redef]
+                """
+                Handle an ESC key event by closing the active prompt application with an empty result.
+                
+                Parameters:
+                    event: The key event object that triggered this handler (from prompt_toolkit).
+                """
                 event.app.exit(result="")
 
         title = _session.prompt("🎮 Game name: ", key_bindings=kb, bottom_toolbar=_bottom_toolbar) if kb is not None else _session.prompt("🎮 Game name: ", bottom_toolbar=_bottom_toolbar)
@@ -1147,7 +1298,14 @@ def edit_game_ui(initial_title: Optional[str] = None) -> None:
 
 
 def open_edit_ui_with_existing_json(existing: Dict[str, Any]) -> None:
-    """Open the same action UI using an existing game JSON as the starting point."""
+    """
+    Open an interactive edit UI pre-populated with an existing game classification.
+    
+    Displays a rendered summary of the provided game data and prompts the user to choose one of three actions: add the record to the database, request automated changes to the classification, or discard the edit. If "add" is chosen the function attempts to update the existing record when an `_id` field is present or insert a new record otherwise. If "request changes" is chosen, the user's change description is submitted to the revision flow and any returned classification replaces the current one before the user may save or discard. UI falls back to simpler console prompts when advanced session features are unavailable.
+    
+    Parameters:
+        existing (Dict[str, Any]): A game classification dictionary to edit; may include an `_id` key to indicate an existing database record.
+    """
     classification: Dict[str, Any] = dict(existing)
     title = str(classification.get("display_name") or classification.get("name") or "This game")
 
@@ -1316,5 +1474,4 @@ def print_openai_missing_warning() -> None:
     except Exception:
         # Fallback plain print if rich fails
         print("Add Game requires an OpenAI API key. Set OPENAI_API_KEY and restart.")
-
 
